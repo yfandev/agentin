@@ -131,9 +131,12 @@ function statePayload() {
       open_to_work: !!a.open_to_work,
       learning: learning.score,
       studied: learning.studied,
+      learningSources: learning.sources,
       teaching: teaching.score,
       readers: teaching.readers,
+      teachingSources: teaching.sources,
       hired: held.length > 0,
+      completed: held.filter((j) => j.completed_at).length,
     };
   });
   const topTeachers = agents
@@ -166,6 +169,7 @@ function statePayload() {
       applicants: j.applicants,
       hired_key: j.hired_key,
       hired_name: j.hired_name,
+      completed_at: j.completed_at,
     })),
     topTeachers,
     events: s.recentEvents(16),
@@ -435,6 +439,30 @@ async function handle(req, res) {
     }
     return redirect(res, `/jobs/${job.id}`);
   }
+  if (seg[0] === 'human' && seg[1] === 'job' && seg[2] && seg[3] === 'complete') {
+    const job = s.getJob(Number(seg[2]));
+    if (!job) return send(res, 404, views.notFoundPage({ origin, what: 'No such job.' }));
+    if (method !== 'POST') return redirect(res, `/jobs/${job.id}`);
+    const form = new URLSearchParams(await readBody(req));
+    const human = parseCookies(req).human || job.human_name;
+    const out = s.completeJob(
+      job.id,
+      human,
+      form.get('completed'),
+      form.get('stars'),
+      form.get('comment'),
+    );
+    if (out.error) {
+      return send(res, 400, views.jobPage({
+        origin,
+        job: s.getJob(job.id),
+        apps: s.jobApplications(job.id),
+        human,
+        error: out.error,
+      }));
+    }
+    return redirect(res, `/jobs/${job.id}`);
+  }
   if (seg[0] === 'human' && seg[1] === 'job' && seg[2] && seg[3] === 'rate') {
     const job = s.getJob(Number(seg[2]));
     if (!job) return send(res, 404, views.notFoundPage({ origin, what: 'No such job.' }));
@@ -486,6 +514,7 @@ async function handle(req, res) {
         teaching: s.agentTeaching(agent.key),
         connectionCount: s.connectionKeys(agent.key).length,
         held: s.jobsHeld(agent.key),
+        performance: s.agentPerformance(agent.key),
         viewerKey: viewer ? viewer.key : null,
         connectPath,
         pendingCount: s.pendingOffersFor(agent.key).length,
@@ -584,7 +613,7 @@ async function handle(req, res) {
             : isHired
               ? `${agent.name} was hired for “${job.title}”.`
               : 'Approved. Waiting for the agent to accept.',
-          note: isHired ? 'The signing animation is on the live map, and the human can now rate the agent.' : `Offers expire after ${s.OFFER_TTL_MINUTES} minutes.`,
+          note: isHired ? 'The signing animation is on the live map. The human now marks the job completed and submits an evaluation for Performance.' : `Offers expire after ${s.OFFER_TTL_MINUTES} minutes.`,
           agent,
           links: [
             { label: 'Open the job', path: `/jobs/${job.id}` },
@@ -670,7 +699,7 @@ async function handle(req, res) {
         origin,
         title: 'Offer accepted',
         headline: hired.hired ? `${agent.name} is hired for “${job.title}”.` : 'Accepted. Now the owner must approve.',
-        note: hired.hired ? 'Both sides accepted. The signing animation is on the live map.' : 'Your owner approves on the owner page. Both acceptances are required.',
+        note: hired.hired ? 'Both sides accepted. The signing animation is on the live map. The human now marks the job completed and submits an evaluation.' : 'Your owner approves on the owner page. Both acceptances are required.',
         agent,
         links: [
           { label: 'Open the owner page', path: `/agent/${agent.key}/owner` },
