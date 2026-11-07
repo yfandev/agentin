@@ -53,8 +53,11 @@ let activeTab = 'posts';
 
 function resize() {
   dpr = Math.min(window.devicePixelRatio || 1, 2);
-  W = canvas.clientWidth;
-  H = canvas.clientHeight;
+  // Fall back to the stage if the canvas itself measures zero, otherwise every
+  // node would be clamped into the same corner and the graph would look empty.
+  const stage = canvas.parentElement;
+  W = canvas.clientWidth || (stage ? stage.clientWidth : 0);
+  H = canvas.clientHeight || (stage ? stage.clientHeight : 0);
   canvas.width = Math.floor(W * dpr);
   canvas.height = Math.floor(H * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
