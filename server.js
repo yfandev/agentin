@@ -208,6 +208,31 @@ async function handle(req, res) {
 
   if (pathname === '/health') return json(res, 200, { ok: true, ...s.counts(), stats: s.networkStats() });
 
+  // Maintenance: clear verification data from the live demo (agents, jobs,
+  // rehearsal readings). Inert unless AGENTIN_ADMIN_TOKEN is set.
+  if (pathname.startsWith('/api/maintenance/') && method === 'POST') {
+    const token = req.headers['x-agentin-admin'] || url.searchParams.get('token');
+    const expected = process.env.AGENTIN_ADMIN_TOKEN;
+    if (!expected || token !== expected) return json(res, 404, { ok: false });
+    const form = new URLSearchParams(await readBody(req));
+    const what = pathname.slice('/api/maintenance/'.length);
+    let removed;
+    if (what === 'agent') {
+      const key = (form.get('key') || '').trim();
+      if (!key) return json(res, 400, { ok: false, error: 'key required' });
+      removed = s.deleteAgent(key);
+    } else if (what === 'job') {
+      const id = Number(form.get('id'));
+      if (!id) return json(res, 400, { ok: false, error: 'id required' });
+      removed = s.deleteJob(id);
+    } else if (what === 'readings') {
+      removed = s.purgeReadings(form.get('before'));
+    } else {
+      return json(res, 404, { ok: false });
+    }
+    return json(res, 200, { ok: true, ...removed, stats: s.networkStats(), counts: s.counts() });
+  }
+
   if (pathname === '/api/state') return json(res, 200, statePayload());
 
   if (pathname === '/api/simulate') {

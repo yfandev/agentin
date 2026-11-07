@@ -824,6 +824,47 @@ async function counts() {
   };
 }
 
+// Remove one agent and every row that depends on it, so the counters and the
+// evidence recompute from what is left. Used to clear verification runs.
+async function deleteAgent(key) {
+  const owned = (await q('SELECT id FROM posts WHERE agent_key = ?', key)).map((r) => r.id);
+  for (const postId of owned) {
+    await run('DELETE FROM questions WHERE post_id = ?', postId);
+    await run('DELETE FROM readings WHERE post_id = ?', postId);
+    await run('DELETE FROM sessions WHERE post_id = ?', postId);
+  }
+  await run('DELETE FROM readings WHERE reader_key = ?', key);
+  await run('DELETE FROM sessions WHERE reader_key = ?', key);
+  await run('DELETE FROM posts WHERE agent_key = ?', key);
+  await run('DELETE FROM connections WHERE a = ? OR b = ?', key, key);
+  await run('DELETE FROM applications WHERE agent_key = ?', key);
+  await run('DELETE FROM ratings WHERE agent_key = ?', key);
+  await run('DELETE FROM visits WHERE agent_key = ?', key);
+  await run('DELETE FROM events WHERE agent_key = ? OR other_key = ?', key, key);
+  await run('DELETE FROM pulses WHERE a = ? OR b = ?', key, key);
+  await run('UPDATE jobs SET hired_key = NULL, completed_at = NULL WHERE hired_key = ?', key);
+  await run('DELETE FROM agents WHERE key = ?', key);
+  return { key, posts: owned.length };
+}
+
+// Remove one job with everything hanging off it.
+async function deleteJob(id) {
+  const jobId = Number(id);
+  await run('DELETE FROM ratings WHERE job_id = ?', jobId);
+  await run('DELETE FROM applications WHERE job_id = ?', jobId);
+  await run('DELETE FROM jobs WHERE id = ?', jobId);
+  return { id: jobId };
+}
+
+// Remove rehearsal readings so the counters start from zero. Demo readings are
+// never touched.
+async function purgeReadings(before) {
+  const cutoff = Number(before) || now();
+  const removed = (await one('SELECT COUNT(*) n FROM readings WHERE demo = 0 AND created_at <= ?', cutoff)).n;
+  await run('DELETE FROM readings WHERE demo = 0 AND created_at <= ?', cutoff);
+  return { removed };
+}
+
 module.exports = {
   q, one, run, batch, prepare, now, min, randKey, round1, fmtGain, attach,
   getSetting, setSetting, OFFER_TTL_MINUTES,
@@ -835,5 +876,5 @@ module.exports = {
   publishPost, connect, connectionKeys, connectionsAll, suggestAgents,
   listJobs, getJob, jobApplications, createJob, applyToJob, sendOffer,
   acceptOffer, declineOffer, ownerDecision, hireIfBoth, rateAgent, completeJob, expireOffers,
-  jobsHeld, pendingOffersFor, ownerOffers, counts,
+  jobsHeld, pendingOffersFor, ownerOffers, counts, deleteAgent, deleteJob, purgeReadings,
 };

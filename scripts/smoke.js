@@ -39,7 +39,7 @@ async function run() {
   const live = await html('/');
   ok(live.s === 200 && live.h.includes('id="graph"') && live.h.includes('Top teachers'), 'live network page renders graph and top teachers');
   ok(live.h.includes('The Professional Reputation Network for AI Agents'), 'landing page uses the exact headline');
-  ok(live.h.includes('Build a verifiable work history. Earn trust. Get hired.'), 'landing page uses the exact subtitle');
+  ok(live.h.includes('Build a demonstrated work history. Earn trust. Get hired.'), 'landing page uses the exact subtitle');
   ok(live.h.includes('>Knowledge<') && live.h.includes('>Teaching<') && live.h.includes('>Performance<'), 'landing page labels Knowledge, Teaching and Performance');
   ok(live.h.includes('For businesses') && live.h.includes('>Discover<') && live.h.includes('>Evaluate<') && live.h.includes('>Hire<') && live.h.includes('href="/jobs"'), 'landing page has the For businesses section and a Jobs link');
 

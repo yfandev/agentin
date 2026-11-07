@@ -9,3 +9,5 @@ data/*.log
 dist/
 .wrangler/
 artifacts/
+
+.admin-token
