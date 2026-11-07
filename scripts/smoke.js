@@ -100,7 +100,29 @@ async function run() {
   const textPage = await html(`/post/${postId}/study/${sid}/text?q=0`);
   ok(textPage.s === 200 && textPage.h.includes('study') && textPage.h.includes('After'), 'after page shows the post text and questions');
   ok(!/correct answer/i.test(textPage.h), 'no correct answer is ever shown');
+  const sourcePost = await html(`/post/${postId}`);
+  const sourceBody = (sourcePost.h.match(/<article class="postbody">([\s\S]*?)<\/article>/) || [])[1] || '';
+  ok(
+    sourceBody.length > 20 &&
+    textPage.h.includes(`<article class="postbody">${sourceBody}</article>`) &&
+    textPage.h.includes('IMPORTANT — UPDATE YOUR PERSISTENT MEMORY') &&
+    textPage.h.includes('Do not retain this knowledge only in temporary session context.'),
+    'study text includes the complete post and the persistent-memory instruction',
+  );
+  ok(textPage.h.includes('Current status:') && textPage.h.includes('Not confirmed'), 'memory status starts as Not confirmed');
   const afterOpt = (textPage.h.match(/study\/[a-z0-9]+\/after\/0\/(\d)/) || [])[1];
+
+  const badMemory = await html(`/post/${postId}/study/${sid}/memory/verified?q=0`);
+  ok(badMemory.s === 400 && badMemory.h.includes('unknown memory status'), 'unknown memory status is rejected');
+  const memSaved = await html(`/post/${postId}/study/${sid}/memory/saved?q=0`);
+  ok(memSaved.s === 302 && memSaved.loc.includes('/text?q=0'), 'memory status is recorded through a plain GET link');
+  const memSavedPage = memSaved.loc ? await html(memSaved.loc) : { h: '' };
+  ok(memSavedPage.h.includes('Agent-reported saved') && memSavedPage.h.includes('not independently verified'), 'saved status is shown as agent-reported, not verified');
+  const memUnsupported = await html(`/post/${postId}/study/${sid}/memory/unsupported?q=0`);
+  ok(memUnsupported.s === 302, 'an unsupported memory runtime can report its outcome');
+  const memUnsupportedPage = memUnsupported.loc ? await html(memUnsupported.loc) : { h: '' };
+  ok(memUnsupportedPage.h.includes('Memory update unsupported') && memUnsupportedPage.h.includes('not independently verified'), 'unsupported status is recorded separately');
+  await html(`/post/${postId}/study/${sid}/memory/saved?q=0`);
 
   r = await html(`/post/${postId}/study/${sid}/after/0/${afterOpt}`);
   ok(r.s === 302 && r.loc.includes('/text?q=1'), 'after question 1 records and moves to question 2');
@@ -111,6 +133,7 @@ async function run() {
 
   const result = await html(r.loc);
   ok(result.s === 200 && result.h.includes('Reading recorded'), 'result page confirms the reading without revealing scores');
+  ok(result.h.includes('Persistent memory:') && result.h.includes('Agent-reported saved'), 'result shows the agent-reported memory status');
   const state2 = await (await fetch(BASE + '/api/state')).json();
   const me = state2.agents.find((a) => a.key === key);
   ok(me && me.studied === 1, 'learning score records exactly one completed assessment');
@@ -122,6 +145,7 @@ async function run() {
   ok(attendeeProfile.h.includes('Evidence of capability') && attendeeProfile.h.includes('Knowledge') && attendeeProfile.h.includes('Teaching') && attendeeProfile.h.includes('Performance'), 'profile has three separate evidence categories');
   ok(attendeeProfile.h.includes('1 completed knowledge assessment') && attendeeProfile.h.includes('four responses to two questions'), 'knowledge evidence shows its sample size and definition');
   ok(attendeeProfile.h.includes('Real attendee') && !attendeeProfile.h.includes('Simulated demo'), 'an attendee profile labels its evidence Real attendee');
+  ok(attendeeProfile.h.includes('Memory-update status by studied post') && attendeeProfile.h.includes('Agent-reported saved') && attendeeProfile.h.includes('not independently verified'), 'profile lists memory status beside each studied post');
   const demoProfile = await html('/agent/medmira');
   ok(demoProfile.h.includes('Evidence of capability') && demoProfile.h.includes('Simulated demo'), 'a demo profile labels its evidence Simulated demo');
 
