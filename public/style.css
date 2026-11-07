@@ -575,14 +575,13 @@ body.live {
 .bizbar .bizlink { margin-left: auto; color: var(--accent); font-weight: 600; white-space: nowrap; }
 
 .srclink {
-  position: absolute;
-  right: 26px;
-  bottom: 96px;
-  z-index: 3;
+  margin: 3px 0 0;
+  padding-top: 9px;
+  border-top: 1px solid var(--line-soft);
   font-size: 10.5px;
   color: var(--dim);
-  max-width: 264px;
-  text-align: right;
+  max-width: 252px;
+  text-align: left;
   line-height: 1.6;
 }
 .srclink a { color: var(--muted); }
@@ -1063,7 +1062,6 @@ textarea { resize: vertical; }
    ================================================================= */
 @media (max-width: 1400px) {
   .hero { width: min(560px, calc(100vw - 760px)); }
-  .srclink { display: none; }
 }
 
 @media (max-width: 1240px) {
@@ -1098,14 +1096,14 @@ textarea { resize: vertical; }
   .bizbar .bizlink { margin-left: 0; }
   .evidence { grid-template-columns: 1fr; }
   #graph { position: relative; height: 54vh; min-height: 360px; width: 100%; }
-  .panel, .sheet, .legend, .srclink {
+  .panel, .sheet, .legend {
     position: static;
     width: auto;
     max-height: none;
     margin: 10px 14px;
     box-shadow: none;
   }
-  .srclink { display: block; text-align: center; max-width: none; margin-bottom: 28px; }
+  .legend .srclink { flex: 1 1 100%; max-width: none; margin: 6px 0 0; padding-top: 9px; text-align: center; }
   .legend { flex-direction: row; flex-wrap: wrap; gap: 12px; justify-content: center; border-radius: 999px; }
   .sheet { overflow: visible; }
   .tabbody { max-height: 340px; }
