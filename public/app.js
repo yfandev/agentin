@@ -64,17 +64,41 @@ window.addEventListener('resize', () => {
   layoutTargets(true);
 });
 
-// The headline panel floats over the graph on wide screens, so nodes have to
-// stay out of its rectangle. Returns null when the panel is not over the canvas
-// (narrow layouts put it above the graph instead).
-function heroBox() {
-  const hero = document.querySelector('.hero');
-  if (!hero) return null;
-  const hr = hero.getBoundingClientRect();
+// Floating panels drawn on top of the graph. Nodes must not sit under any of
+// them, or they are painted but invisible.
+const OVERLAY_SELECTORS = ['.hero', '.panel.teachers', '.panel.feed', '.sheet', '.legend'];
+
+function overlayRects() {
   const cr = canvas.getBoundingClientRect();
-  const box = { left: hr.left - cr.left, right: hr.right - cr.left, top: hr.top - cr.top, bottom: hr.bottom - cr.top };
-  if (box.bottom <= 0 || box.top >= cr.height || box.right <= 0 || box.left >= cr.width) return null;
-  return box;
+  const out = [];
+  OVERLAY_SELECTORS.forEach((sel) => {
+    document.querySelectorAll(sel).forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) return;
+      if (r.bottom <= cr.top || r.top >= cr.bottom || r.right <= cr.left || r.left >= cr.right) return;
+      out.push({ left: r.left - cr.left, right: r.right - cr.left, top: r.top - cr.top, bottom: r.bottom - cr.top });
+    });
+  });
+  return out;
+}
+
+// Move a target just outside a padded rectangle, preferring an exit that stays
+// on the canvas so the bounds clamp cannot drag it straight back inside.
+function pushOutOf(pt, box, pad) {
+  if (pt.tx <= box.left - pad || pt.tx >= box.right + pad || pt.ty <= box.top - pad || pt.ty >= box.bottom + pad) return false;
+  const edge = 26;
+  const onCanvas = (c) => c.tx >= edge && c.tx <= W - edge && c.ty >= edge && c.ty <= H - edge;
+  const moves = [
+    { tx: box.left - pad, ty: pt.ty, d: pt.tx - (box.left - pad) },
+    { tx: box.right + pad, ty: pt.ty, d: box.right + pad - pt.tx },
+    { tx: pt.tx, ty: box.top - pad, d: pt.ty - (box.top - pad) },
+    { tx: pt.tx, ty: box.bottom + pad, d: box.bottom + pad - pt.ty },
+  ].filter((c) => c.d >= 0);
+  const pick = (moves.filter(onCanvas).length ? moves.filter(onCanvas) : moves).sort((a, b) => a.d - b.d)[0];
+  if (!pick) return false;
+  pt.tx = pick.tx;
+  pt.ty = pick.ty;
+  return true;
 }
 
 function catCounts(agents) {
@@ -89,9 +113,10 @@ function catCounts(agents) {
 function separateTargets(instant = false) {
   const list = [...nodes.values()];
   if (!list.length) return;
-  const hero = heroBox();
+  if (W < 80 || H < 80) return; // canvas not measured yet: keep the natural layout
+  const overlays = overlayRects();
   const edge = 26;
-  for (let iter = 0; iter < 120; iter++) {
+  for (let iter = 0; iter < 200; iter++) {
     let changed = false;
     for (let i = 0; i < list.length; i++) {
       for (let j = i + 1; j < list.length; j++) {
@@ -117,18 +142,25 @@ function separateTargets(instant = false) {
       }
     }
     list.forEach((n) => {
+      overlays.forEach((box) => { if (pushOutOf(n, box, 12 + n.r)) changed = true; });
       const x = Math.max(n.r + edge, Math.min(W - n.r - edge, n.tx));
-      let y = Math.max(n.r + edge, Math.min(H - n.r - edge, n.ty));
-      if (hero) {
-        const pad = 46 + n.r;
-        if (x > hero.left - pad && x < hero.right + pad && y < hero.bottom + pad) y = hero.bottom + pad;
-      }
+      const y = Math.max(n.r + edge, Math.min(H - n.r - edge, n.ty));
       if (Math.abs(x - n.tx) > 0.01 || Math.abs(y - n.ty) > 0.01) changed = true;
       n.tx = x;
       n.ty = y;
     });
     if (!changed) break;
   }
+  // Last resort: no dot may stay under a panel.
+  list.forEach((n) => {
+    for (let k = 0; k < 12; k++) {
+      let moved = false;
+      overlays.forEach((box) => { if (pushOutOf(n, box, 12 + n.r)) moved = true; });
+      if (!moved) break;
+    }
+    n.tx = Math.max(n.r + edge, Math.min(W - n.r - edge, n.tx));
+    n.ty = Math.max(n.r + edge, Math.min(H - n.r - edge, n.ty));
+  });
   if (instant) list.forEach((n) => { n.x = n.tx; n.y = n.ty; });
 }
 
@@ -139,7 +171,7 @@ function layoutTargets(instant = false) {
   const scale = Math.max(0.55, Math.min(1.35, Math.min(W, H) / 720));
   const R = Math.min(W, H) * 0.3;
   const centerY = H / 2 + 8;
-  const hero = heroBox();
+  const overlays = overlayRects();
   state.agents.forEach((agent) => {
     index[agent.category] = index[agent.category] || 0;
     const i = index[agent.category]++;
@@ -152,13 +184,9 @@ function layoutTargets(instant = false) {
     const radius = (agent.badge === 'attendee agent' ? 17 : 14) * Math.max(0.8, Math.min(1.3, scale));
     const tx = cx + Math.cos(a) * spread;
     let ty = cy + Math.sin(a) * spread * 0.85;
-    // Clearance for the node plus the HIRED marker drawn above it.
-    if (hero) {
-      const pad = 46 + radius;
-      if (tx > hero.left - pad && tx < hero.right + pad && ty < hero.bottom + pad) {
-        ty = hero.bottom + pad;
-      }
-    }
+    // Start outside every floating panel: dots under a panel are invisible.
+    const spot = { tx, ty };
+    overlays.forEach((box) => pushOutOf(spot, box, 12 + radius));
 
     let node = nodes.get(agent.key);
     if (!node) {
@@ -315,6 +343,7 @@ function applyState(next) {
   renderFeed(next.events);
   renderTabs();
   renderControls(next.settings);
+  if (W < 80 || H < 80) resize(); // first load runs before the canvas is measured
   layoutTargets();
 
   const now = Date.now();
