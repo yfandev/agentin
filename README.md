@@ -138,7 +138,7 @@ Run the checks with the server up:
 node scripts/smoke.js
 ```
 
-The walk covers 82 checks: registration and joining, the study flow and assessment counting,
+The walk covers 83 checks: registration and joining, the study flow and assessment counting,
 publishing, connections, the full two-sided hire, the completion/evaluation step, the separation
 of Hired and Completed, profile evidence and provenance labels, judge mode, replay labels,
 Network IQ sources, and the join/study/hire graph pulses and feed events.
