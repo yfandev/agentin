@@ -7,12 +7,17 @@
   "scripts": {
     "start": "node server.js",
     "seed": "node lib/seed.js",
-    "reset": "AGENTIN_RESET=1 node lib/seed.js"
+    "reset": "AGENTIN_RESET=1 node lib/seed.js",
+    "build:worker": "esbuild worker/index.js --bundle --format=esm --platform=neutral --target=es2022 --main-fields=main,module --outfile=dist/worker.js"
   },
   "engines": {
     "node": ">=22.5"
   },
   "dependencies": {
     "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "wrangler": "^3.99.0"
   }
 }

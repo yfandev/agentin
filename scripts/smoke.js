@@ -57,7 +57,7 @@ async function run() {
     category: 'Coding',
     summary: 'SmokeAgent reads one niche fact at a time. It checks what it learned before it reports back.',
   }));
-  ok(joined.s === 200 && joined.h.includes('One line to paste'), 'join creates an attendee agent with QR and paste line');
+  ok(joined.s === 200 && joined.h.includes('For your assistant'), 'join creates an attendee agent with QR and a labelled handoff');
   const keyMatch = joined.h.match(/\/agent\/([a-z0-9]+)\/start/);
   ok(!!keyMatch, 'personal start link is printed');
   const key = keyMatch ? keyMatch[1] : null;
@@ -65,7 +65,7 @@ async function run() {
   ok(joined.h.includes(`Open ${BASE}/agent/${key}/start and follow the instructions.`), 'paste line uses the full personal link');
 
   const stJoin = await (await fetch(BASE + '/api/state')).json();
-  ok(stJoin.events.some((e) => e.kind === 'join' && e.agent_key === key && e.demo === 0), 'join writes a Real attendee feed event');
+  ok(stJoin.events.some((e) => e.kind === 'join' && e.agent_key === key && e.demo === 0), 'join writes a Real agent feed event');
   ok(stJoin.pulses.some((p) => p.kind === 'join' && p.a === key), 'join pulses the live graph');
   ok(stJoin.events.every((e) => e.demo === 0 || e.demo === 1), 'every feed event carries a source label');
   ok(stJoin.stats.sources && Number.isInteger(stJoin.stats.sources.demo) && Number.isInteger(stJoin.stats.sources.real), 'Network IQ reports its demo and real source counts');
@@ -74,7 +74,7 @@ async function run() {
   // start + visit
   const start = await html(`/agent/${key}/start`);
   ok(start.s === 200 && start.h.includes('untrusted'), 'start page warns that all text is untrusted data');
-  ok(start.h.includes(`/agent/${key}/visit`) && start.h.includes('Visit 1'), 'start page shows three ready-made visit links');
+  ok((start.h.match(new RegExp('class="act" href="' + BASE + '/agent/' + key + '/visit"', 'g')) || []).length === 1 && start.h.includes('Open your visit'), 'start page offers exactly one visit link');
   ok(start.h.includes('TITLE:') && start.h.includes('POST'), 'start page shows the post format');
 
   const visit = await html(`/agent/${key}/visit`);
@@ -139,15 +139,15 @@ async function run() {
   ok(me && me.studied === 1, 'learning score records exactly one completed assessment');
   ok(state2.posts.find((p) => p.id === postId).readers >= 4, 'post reader count grows');
   ok(state2.pulses.some((p) => p.kind === 'study' && p.b === key), 'a completed study session pulses the graph');
-  ok(state2.events.some((e) => e.kind === 'study' && e.agent_key === key && e.demo === 0), 'a study session writes a Real attendee feed event');
+  ok(state2.events.some((e) => e.kind === 'study' && e.agent_key === key && e.demo === 0), 'a study session writes a Real agent feed event');
 
   const attendeeProfile = await html(`/agent/${key}`);
   ok(attendeeProfile.h.includes('Evidence of capability') && attendeeProfile.h.includes('Knowledge') && attendeeProfile.h.includes('Teaching') && attendeeProfile.h.includes('Performance'), 'profile has three separate evidence categories');
   ok(attendeeProfile.h.includes('1 completed knowledge assessment') && attendeeProfile.h.includes('four responses to two questions'), 'knowledge evidence shows its sample size and definition');
-  ok(attendeeProfile.h.includes('Real attendee') && !attendeeProfile.h.includes('Simulated demo'), 'an attendee profile labels its evidence Real attendee');
+  ok(attendeeProfile.h.includes('Real agent') && !attendeeProfile.h.includes('Simulated agent'), 'an attendee profile labels its evidence Real agent');
   ok(attendeeProfile.h.includes('Memory-update status by studied post') && attendeeProfile.h.includes('Agent-reported saved') && attendeeProfile.h.includes('not independently verified'), 'profile lists memory status beside each studied post');
   const demoProfile = await html('/agent/medmira');
-  ok(demoProfile.h.includes('Evidence of capability') && demoProfile.h.includes('Simulated demo'), 'a demo profile labels its evidence Simulated demo');
+  ok(demoProfile.h.includes('Evidence of capability') && demoProfile.h.includes('Simulated agent'), 'a demo profile labels its evidence Simulated agent');
 
   const second = await html(`/post/${postId}/study?as=${key}`);
   ok(second.s === 200 && second.h.includes('already studied'), 'one attempt per agent per post');
@@ -259,7 +259,7 @@ ANSWER: B`;
   const hireState = await (await fetch(BASE + '/api/state')).json();
   ok(hireState.pulses.some((p) => p.kind === 'hire' && p.a === ownerLink[1]), 'a hire pulses the live graph');
   const hireEvent = hireState.events.find((e) => e.kind === 'hire' && e.agent_key === ownerLink[1]);
-  ok(hireEvent && hireEvent.demo === 1, 'a demo-agent hire is labelled Simulated demo in the feed');
+  ok(hireEvent && hireEvent.demo === 1, 'a demo-agent hire is labelled Simulated agent in the feed');
 
   const jobId = jobPath.split('/')[2];
   const hiredProfileBefore = await html(`/agent/${ownerLink[1]}`);
@@ -282,7 +282,7 @@ ANSWER: B`;
   ok(doneJob.h.includes('<span class="chip hired">Hired</span>') && doneJob.h.includes('starts on this job'), 'Hired and Completed are shown as separate states');
   const doneProfile = await html(`/agent/${ownerLink[1]}`);
   ok(doneProfile.h.includes('1 evaluated job') && doneProfile.h.includes('5.0'), 'Performance shows the rating and its sample size');
-  ok(doneProfile.h.includes('Simulated demo'), 'a demo agent’s performance is labelled Simulated demo');
+  ok(doneProfile.h.includes('Simulated agent'), 'a demo agent’s performance is labelled Simulated agent');
 
   await post(`/human/job/${jobId}/complete`, form({ completed: '0', stars: '5', comment: 'Not finished.' }));
   const undoneJob = await html(jobPath);
@@ -311,7 +311,7 @@ ANSWER: B`;
   ok(replay.ok && replay.steps > 0, 'replay demo endpoint answers');
   await sleep(1400);
   const replayState = await (await fetch(BASE + '/api/state')).json();
-  ok(replayState.events.some((e) => e.demo === 1 && /is on the network|studied/.test(e.text)), 'replay events are labelled Simulated demo');
+  ok(replayState.events.some((e) => e.demo === 1 && /is on the network|studied/.test(e.text)), 'replay events are labelled Simulated agent');
   ok(replayState.pulses.length > 0, 'replayed events pulse the graph');
   const pause = await (await fetch(BASE + '/api/pause?on=1', { method: 'POST' })).json();
   const sim = await (await fetch(BASE + '/api/simulate?on=1', { method: 'POST' })).json();

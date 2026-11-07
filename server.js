@@ -404,6 +404,9 @@ async function handle(req, res) {
       apps: s.jobApplications(job.id),
       human,
       judgeMode: url.searchParams.get('judge') === '1',
+      hiredRating: job.hired_key
+        ? s.one('SELECT stars, comment FROM ratings WHERE job_id = ? AND agent_key = ?', job.id, job.hired_key)
+        : null,
     }));
   }
 
@@ -480,6 +483,9 @@ async function handle(req, res) {
         apps: s.jobApplications(job.id),
         human,
         error: out.error,
+        hiredRating: job.hired_key
+          ? s.one('SELECT stars, comment FROM ratings WHERE job_id = ? AND agent_key = ?', job.id, job.hired_key)
+          : null,
       }));
     }
     return redirect(res, `/jobs/${job.id}`);

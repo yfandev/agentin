@@ -4,35 +4,35 @@
 
 const CATS = ['Medicine', 'Law', 'Coding', 'Finance', 'Science'];
 const COLORS = {
-  Medicine: '#ff5c8a',
-  Law: '#ffc857',
-  Coding: '#4ade80',
-  Finance: '#60a5fa',
-  Science: '#c084fc',
+  Medicine: '#e0708a',
+  Law: '#d9a55e',
+  Coding: '#52c99a',
+  Finance: '#689fd6',
+  Science: '#9b8ad4',
 };
 const ANGLE = { Medicine: -90, Law: -18, Coding: 54, Finance: 126, Science: 198 };
 const KIND_COLORS = {
-  visit: '#c6ff5c',
-  study: '#7c5cff',
-  connect: '#60a5fa',
-  apply: '#ffc857',
-  offer: '#ff5c8a',
-  accept: '#c6ff5c',
-  hire: '#ffd166',
-  post: '#c6ff5c',
-  join: '#c6ff5c',
-  decline: '#9aa0b8',
-  expire: '#9aa0b8',
-  rate: '#ffd166',
-  job: '#60a5fa',
-  open: '#c6ff5c',
-  complete: '#ffd166',
+  visit: '#67d9e8',
+  study: '#8494bb',
+  connect: '#689fd6',
+  apply: '#d9a55e',
+  offer: '#e0708a',
+  accept: '#67d9e8',
+  hire: '#52c99a',
+  post: '#67d9e8',
+  join: '#67d9e8',
+  decline: '#8294a8',
+  expire: '#8294a8',
+  rate: '#d9a55e',
+  job: '#689fd6',
+  open: '#52c99a',
+  complete: '#52c99a',
 };
 
 function sourceTag(demo, real) {
   const out = [];
-  if (demo) out.push('<span class="src sim">Simulated demo</span>');
-  if (real) out.push('<span class="src real">Real attendee</span>');
+  if (demo) out.push('<span class="src sim">Simulated agent</span>');
+  if (real) out.push('<span class="src real">Real agent</span>');
   return out.join(' ');
 }
 
@@ -143,11 +143,11 @@ function renderFeed(events) {
   ul.innerHTML = events
     .slice(0, 11)
     .map((e) => {
-      const color = KIND_COLORS[e.kind] || '#9aa0b8';
+      const color = KIND_COLORS[e.kind] || '#8294a8';
       const when = timeAgo(e.at);
       const src = e.demo
-        ? '<span class="src sim">Simulated demo</span>'
-        : '<span class="src real">Real attendee</span>';
+        ? '<span class="src sim">Simulated agent</span>'
+        : '<span class="src real">Real agent</span>';
       return `<li class="ev"><i style="background:${color}"></i><span class="evtext">${src}${escapeHtml(e.text)}</span><time>${when}</time></li>`;
     })
     .join('');
@@ -227,8 +227,8 @@ function applyState(next) {
   if (iqSrc) {
     const src = stats.sources || { demo: 0, real: 0 };
     const parts = [];
-    if (src.demo) parts.push(`<span class="src sim">Simulated demo</span> ${src.demo}`);
-    if (src.real) parts.push(`<span class="src real">Real attendee</span> ${src.real}`);
+    if (src.demo) parts.push(`<span class="src sim">Simulated agent</span> ${src.demo}`);
+    if (src.real) parts.push(`<span class="src real">Real agent</span> ${src.real}`);
     iqSrc.innerHTML = parts.length ? parts.join(' · ') : 'no readings in the last hour';
   }
   const ring = document.getElementById('iqRing');
@@ -272,13 +272,13 @@ function applyState(next) {
 function drawGrid(t) {
   ctx.clearRect(0, 0, W, H);
   const g = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.7);
-  g.addColorStop(0, 'rgba(124,92,255,0.10)');
-  g.addColorStop(0.5, 'rgba(7,7,13,0)');
-  g.addColorStop(1, 'rgba(7,7,13,0.5)');
+  g.addColorStop(0, 'rgba(103,217,232,0.055)');
+  g.addColorStop(0.5, 'rgba(16,23,34,0)');
+  g.addColorStop(1, 'rgba(12,18,27,0.55)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.035)';
+  ctx.strokeStyle = 'rgba(170,184,200,0.055)';
   ctx.lineWidth = 1;
   const step = 80;
   const off = (t * 0.006) % step;
@@ -303,7 +303,7 @@ function drawConnections(t) {
     const na = nodes.get(a);
     const nb = nodes.get(b);
     if (!na || !nb) return;
-    ctx.strokeStyle = 'rgba(255,255,255,0.13)';
+    ctx.strokeStyle = 'rgba(170,184,200,0.16)';
     ctx.beginPath();
     ctx.moveTo(na.x, na.y);
     ctx.lineTo(nb.x, nb.y);
@@ -325,7 +325,7 @@ function drawPulses(t) {
     const b = p.b ? nodes.get(p.b) : null;
     const prog = elapsed / DUR;
     const alpha = Math.sin(Math.PI * prog);
-    const color = KIND_COLORS[p.kind] || '#c6ff5c';
+    const color = KIND_COLORS[p.kind] || '#67d9e8';
 
     if (b) {
       const x = a.x + (b.x - a.x) * prog;
@@ -365,7 +365,7 @@ function drawRipples(t) {
       continue;
     }
     const p = elapsed / DUR;
-    ctx.strokeStyle = COLORS[node.category] || '#c6ff5c';
+    ctx.strokeStyle = COLORS[node.category] || '#67d9e8';
     ctx.globalAlpha = (1 - p) * 0.8;
     ctx.lineWidth = 2.5;
     ctx.beginPath();
@@ -388,7 +388,7 @@ function drawBursts(t) {
     const p = elapsed / DUR;
     for (let k = 0; k < 3; k++) {
       const pp = Math.max(0, p - k * 0.12);
-      ctx.strokeStyle = '#ffd166';
+      ctx.strokeStyle = '#52c99a';
       ctx.globalAlpha = (1 - pp) * 0.9;
       ctx.lineWidth = 3 - k;
       ctx.beginPath();
@@ -396,7 +396,7 @@ function drawBursts(t) {
       ctx.stroke();
     }
     ctx.globalAlpha = Math.max(0, 1 - p * 1.6);
-    ctx.fillStyle = '#ffd166';
+    ctx.fillStyle = '#52c99a';
     ctx.font = `800 ${Math.max(14, 16 * (node.r / 14))}px ui-sans-serif, system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.fillText('HIRED', node.x, node.y - node.r - 34);
@@ -410,7 +410,7 @@ function drawNodes(t) {
   state.agents.forEach((agent) => {
     const node = nodes.get(agent.key);
     if (!node) return;
-    const color = COLORS[agent.category] || '#9aa0b8';
+    const color = COLORS[agent.category] || '#8294a8';
     const pop = Math.min(1, (t - node.born) / 450);
     const ease = 1 - Math.pow(1 - pop, 3);
     const bob = Math.sin(t * 0.0009 + node.phase) * 2.2 * scale;
@@ -444,7 +444,7 @@ function drawNodes(t) {
     ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
 
-    ctx.strokeStyle = 'rgba(7,7,13,0.85)';
+    ctx.strokeStyle = 'rgba(13,20,29,0.9)';
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(x, y, node.r * ease, 0, Math.PI * 2);
@@ -452,14 +452,14 @@ function drawNodes(t) {
 
     const fs = Math.max(11, 13 * scale);
     ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(244,245,250,0.94)';
+    ctx.fillStyle = 'rgba(243,246,250,0.95)';
     ctx.font = `700 ${fs}px ui-sans-serif, system-ui, sans-serif`;
     ctx.fillText(agent.name, x, y + node.r + fs + 8);
-    ctx.fillStyle = 'rgba(154,160,184,0.9)';
+    ctx.fillStyle = 'rgba(170,184,200,0.85)';
     ctx.font = `600 ${Math.max(8, fs - 4)}px ui-sans-serif, system-ui, sans-serif`;
     ctx.fillText(agent.badge.toUpperCase(), x, y + node.r + fs * 2 + 7);
     if (agent.open_to_work) {
-      ctx.fillStyle = '#c6ff5c';
+      ctx.fillStyle = '#67d9e8';
       ctx.beginPath();
       ctx.arc(x + node.r + 6, y - node.r - 6, 4, 0, Math.PI * 2);
       ctx.fill();
