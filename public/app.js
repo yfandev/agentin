@@ -26,7 +26,15 @@ const KIND_COLORS = {
   rate: '#ffd166',
   job: '#60a5fa',
   open: '#c6ff5c',
+  complete: '#ffd166',
 };
+
+function sourceTag(demo, real) {
+  const out = [];
+  if (demo) out.push('<span class="src sim">Simulated demo</span>');
+  if (real) out.push('<span class="src real">Real attendee</span>');
+  return out.join(' ');
+}
 
 const canvas = document.getElementById('graph');
 const ctx = canvas.getContext('2d');
@@ -69,13 +77,14 @@ function layoutTargets(instant = false) {
   const index = {};
   const scale = Math.max(0.55, Math.min(1.35, Math.min(W, H) / 720));
   const R = Math.min(W, H) * 0.3;
+  const centerY = H / 2 + 8;
   state.agents.forEach((agent) => {
     index[agent.category] = index[agent.category] || 0;
     const i = index[agent.category]++;
     const total = counts[agent.category] || 1;
     const angle = ((ANGLE[agent.category] || 0) * Math.PI) / 180;
     const cx = W / 2 + Math.cos(angle) * R;
-    const cy = H / 2 + Math.sin(angle) * R;
+    const cy = centerY + Math.sin(angle) * R;
     const spread = total <= 1 ? 0 : Math.min(120 * scale, 30 + total * 16 * scale);
     const a = (i / total) * Math.PI * 2 - Math.PI / 2;
     const tx = cx + Math.cos(a) * spread;
@@ -119,11 +128,12 @@ function renderTeachers(teachers) {
     return;
   }
   ol.innerHTML = teachers
-    .map(
-      (t, i) => `<li><span class="rank">${i + 1}</span>
-        <span class="tname">${escapeHtml(t.name)}<small>${t.readers} reader${t.readers === 1 ? '' : 's'}</small></span>
-        <b class="tscore">${t.teaching}</b></li>`,
-    )
+    .map((t, i) => {
+      const src = t.teachingSources || { demo: 0, real: 0 };
+      return `<li><span class="rank">${i + 1}</span>
+        <span class="tname">${escapeHtml(t.name)}<small>${t.readers} reader${t.readers === 1 ? '' : 's'}</small><small class="tsrc">${sourceTag(src.demo, src.real)}</small></span>
+        <b class="tscore">${t.teaching}</b></li>`;
+    })
     .join('');
 }
 
@@ -135,7 +145,10 @@ function renderFeed(events) {
     .map((e) => {
       const color = KIND_COLORS[e.kind] || '#9aa0b8';
       const when = timeAgo(e.at);
-      return `<li class="ev"><i style="background:${color}"></i><span>${escapeHtml(e.text)}</span><time>${when}</time></li>`;
+      const src = e.demo
+        ? '<span class="src sim">Simulated demo</span>'
+        : '<span class="src real">Real attendee</span>';
+      return `<li class="ev"><i style="background:${color}"></i><span class="evtext">${src}${escapeHtml(e.text)}</span><time>${when}</time></li>`;
     })
     .join('');
 }
@@ -170,6 +183,7 @@ function renderTabs() {
             <span class="chip cat" style="color:${COLORS[j.category]};border-color:${COLORS[j.category]}66;background:${COLORS[j.category]}18">${escapeHtml(j.category)}</span>
             <span class="chip">${escapeHtml(j.type)}</span>
             ${j.hired_key ? '<span class="chip hired">Hired</span>' : '<span class="chip open">Open</span>'}
+            ${j.completed_at ? '<span class="chip complete">Completed</span>' : ''}
           </div>
           <h3>${escapeHtml(j.title)}</h3>
           <div class="prow">
@@ -209,6 +223,14 @@ function applyState(next) {
   state = next;
   const { stats } = next;
   setText('iqValue', stats.networkIQ);
+  const iqSrc = document.getElementById('iqSource');
+  if (iqSrc) {
+    const src = stats.sources || { demo: 0, real: 0 };
+    const parts = [];
+    if (src.demo) parts.push(`<span class="src sim">Simulated demo</span> ${src.demo}`);
+    if (src.real) parts.push(`<span class="src real">Real attendee</span> ${src.real}`);
+    iqSrc.innerHTML = parts.length ? parts.join(' · ') : 'no readings in the last hour';
+  }
   const ring = document.getElementById('iqRing');
   if (ring) {
     const C = 2 * Math.PI * 42;
@@ -499,6 +521,13 @@ document.getElementById('replayBtn')?.addEventListener('click', async (e) => {
   } catch {}
   setTimeout(() => (btn.textContent = 'Replay demo'), 2600);
 });
+
+// Small read-only hook used by the browser acceptance checks.
+window.__agentinDebug = {
+  counts: () => ({ nodes: nodes.size, pulses: pulses.length, ripples: ripples.length, bursts: bursts.length }),
+  state: () => state,
+  nodeList: () => [...nodes.values()].map((n) => ({ name: n.name, x: Math.round(n.x), y: Math.round(n.y), r: Math.round(n.r) })),
+};
 
 resize();
 requestAnimationFrame(frame);
