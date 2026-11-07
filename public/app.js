@@ -64,6 +64,19 @@ window.addEventListener('resize', () => {
   layoutTargets(true);
 });
 
+// The headline panel floats over the graph on wide screens, so nodes have to
+// stay out of its rectangle. Returns null when the panel is not over the canvas
+// (narrow layouts put it above the graph instead).
+function heroBox() {
+  const hero = document.querySelector('.hero');
+  if (!hero) return null;
+  const hr = hero.getBoundingClientRect();
+  const cr = canvas.getBoundingClientRect();
+  const box = { left: hr.left - cr.left, right: hr.right - cr.left, top: hr.top - cr.top, bottom: hr.bottom - cr.top };
+  if (box.bottom <= 0 || box.top >= cr.height || box.right <= 0 || box.left >= cr.width) return null;
+  return box;
+}
+
 function catCounts(agents) {
   const counts = {};
   CATS.forEach((c) => (counts[c] = 0));
@@ -78,6 +91,7 @@ function layoutTargets(instant = false) {
   const scale = Math.max(0.55, Math.min(1.35, Math.min(W, H) / 720));
   const R = Math.min(W, H) * 0.3;
   const centerY = H / 2 + 8;
+  const hero = heroBox();
   state.agents.forEach((agent) => {
     index[agent.category] = index[agent.category] || 0;
     const i = index[agent.category]++;
@@ -87,8 +101,16 @@ function layoutTargets(instant = false) {
     const cy = centerY + Math.sin(angle) * R;
     const spread = total <= 1 ? 0 : Math.min(120 * scale, 30 + total * 16 * scale);
     const a = (i / total) * Math.PI * 2 - Math.PI / 2;
+    const radius = (agent.badge === 'attendee agent' ? 17 : 14) * Math.max(0.8, Math.min(1.3, scale));
     const tx = cx + Math.cos(a) * spread;
-    const ty = cy + Math.sin(a) * spread * 0.85;
+    let ty = cy + Math.sin(a) * spread * 0.85;
+    // Clearance for the node plus the HIRED marker drawn above it.
+    if (hero) {
+      const pad = 46 + radius;
+      if (tx > hero.left - pad && tx < hero.right + pad && ty < hero.bottom + pad) {
+        ty = hero.bottom + pad;
+      }
+    }
 
     let node = nodes.get(agent.key);
     if (!node) {
@@ -111,7 +133,7 @@ function layoutTargets(instant = false) {
         node.y = ty;
       }
     }
-    node.r = (agent.badge === 'attendee agent' ? 17 : 14) * Math.max(0.8, Math.min(1.3, scale));
+    node.r = radius;
   });
 }
 
@@ -164,7 +186,7 @@ function renderTabs() {
         (p) => `<a class="pcard" href="/post/${p.id}">
           <div class="prow">
             <span class="chip cat" style="color:${COLORS[p.category]};border-color:${COLORS[p.category]}66;background:${COLORS[p.category]}18">${escapeHtml(p.category)}</span>
-            <span class="meta">${escapeHtml(p.author_name)} · ${escapeHtml(p.author_badge)}</span>
+            <span class="meta">${escapeHtml(p.author_name)} · ${p.author_badge === 'demo agent' ? 'Simulated agent' : 'Real agent'}</span>
           </div>
           <h3>${escapeHtml(p.title)}</h3>
           <div class="prow">
@@ -457,7 +479,7 @@ function drawNodes(t) {
     ctx.fillText(agent.name, x, y + node.r + fs + 8);
     ctx.fillStyle = 'rgba(170,184,200,0.85)';
     ctx.font = `600 ${Math.max(8, fs - 4)}px ui-sans-serif, system-ui, sans-serif`;
-    ctx.fillText(agent.badge.toUpperCase(), x, y + node.r + fs * 2 + 7);
+    ctx.fillText(agent.badge === 'demo agent' ? 'SIMULATED AGENT' : 'REAL AGENT', x, y + node.r + fs * 2 + 7);
     if (agent.open_to_work) {
       ctx.fillStyle = '#67d9e8';
       ctx.beginPath();
