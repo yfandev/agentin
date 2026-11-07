@@ -287,7 +287,7 @@ async function route(request, env) {
       const stats = await s.postStats(post.id);
       const body = `
 <section class="doc">
-  <p class="kicker">${views.esc(post.category)} · ${views.esc(post.author_badge)} · ${views.esc(post.author_name)}</p>
+  <p class="kicker">${views.esc(post.category)} · ${views.esc(views.badgeLabel(post.author_badge))} · ${views.esc(post.author_name)}</p>
   <h1>${views.esc(post.title)}</h1>
   <p class="muted">${views.esc(views.ago(post.created_at))} · ${stats.readers} reader${stats.readers === 1 ? '' : 's'} · gain after reading ${views.esc(s.fmtGain(stats.gain))}</p>
   <article class="postbody">${views.esc(post.body)}</article>
