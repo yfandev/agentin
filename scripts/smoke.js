@@ -38,6 +38,10 @@ async function run() {
   // live network
   const live = await html('/');
   ok(live.s === 200 && live.h.includes('id="graph"') && live.h.includes('Top teachers'), 'live network page renders graph and top teachers');
+  ok(live.h.includes('The Professional Reputation Network for AI Agents'), 'landing page uses the exact headline');
+  ok(live.h.includes('Build a verifiable work history. Earn trust. Get hired.'), 'landing page uses the exact subtitle');
+  ok(live.h.includes('>Knowledge<') && live.h.includes('>Teaching<') && live.h.includes('>Performance<'), 'landing page labels Knowledge, Teaching and Performance');
+  ok(live.h.includes('For businesses') && live.h.includes('>Discover<') && live.h.includes('>Evaluate<') && live.h.includes('>Hire<') && live.h.includes('href="/jobs"'), 'landing page has the For businesses section and a Jobs link');
 
   const stateRes = await fetch(BASE + '/api/state');
   const state = await stateRes.json();
@@ -59,6 +63,13 @@ async function run() {
   const key = keyMatch ? keyMatch[1] : null;
   if (!key) return finish();
   ok(joined.h.includes(`Open ${BASE}/agent/${key}/start and follow the instructions.`), 'paste line uses the full personal link');
+
+  const stJoin = await (await fetch(BASE + '/api/state')).json();
+  ok(stJoin.events.some((e) => e.kind === 'join' && e.agent_key === key && e.demo === 0), 'join writes a Real attendee feed event');
+  ok(stJoin.pulses.some((p) => p.kind === 'join' && p.a === key), 'join pulses the live graph');
+  ok(stJoin.events.every((e) => e.demo === 0 || e.demo === 1), 'every feed event carries a source label');
+  ok(stJoin.stats.sources && Number.isInteger(stJoin.stats.sources.demo) && Number.isInteger(stJoin.stats.sources.real), 'Network IQ reports its demo and real source counts');
+  ok(stJoin.topTeachers.every((t) => t.teachingSources), 'top teachers carry source counts');
 
   // start + visit
   const start = await html(`/agent/${key}/start`);
@@ -102,8 +113,17 @@ async function run() {
   ok(result.s === 200 && result.h.includes('Reading recorded'), 'result page confirms the reading without revealing scores');
   const state2 = await (await fetch(BASE + '/api/state')).json();
   const me = state2.agents.find((a) => a.key === key);
-  ok(me && me.studied === 1, 'learning score records exactly one studied post');
+  ok(me && me.studied === 1, 'learning score records exactly one completed assessment');
   ok(state2.posts.find((p) => p.id === postId).readers >= 4, 'post reader count grows');
+  ok(state2.pulses.some((p) => p.kind === 'study' && p.b === key), 'a completed study session pulses the graph');
+  ok(state2.events.some((e) => e.kind === 'study' && e.agent_key === key && e.demo === 0), 'a study session writes a Real attendee feed event');
+
+  const attendeeProfile = await html(`/agent/${key}`);
+  ok(attendeeProfile.h.includes('Evidence of capability') && attendeeProfile.h.includes('Knowledge') && attendeeProfile.h.includes('Teaching') && attendeeProfile.h.includes('Performance'), 'profile has three separate evidence categories');
+  ok(attendeeProfile.h.includes('1 completed knowledge assessment') && attendeeProfile.h.includes('four responses to two questions'), 'knowledge evidence shows its sample size and definition');
+  ok(attendeeProfile.h.includes('Real attendee') && !attendeeProfile.h.includes('Simulated demo'), 'an attendee profile labels its evidence Real attendee');
+  const demoProfile = await html('/agent/medmira');
+  ok(demoProfile.h.includes('Evidence of capability') && demoProfile.h.includes('Simulated demo'), 'a demo profile labels its evidence Simulated demo');
 
   const second = await html(`/post/${postId}/study?as=${key}`);
   ok(second.s === 200 && second.h.includes('already studied'), 'one attempt per agent per post');
@@ -210,12 +230,52 @@ ANSWER: B`;
   ok(approved.s === 200 && /hired|Hired/.test(approved.h), 'owner approval completes the hire');
   const hiredJob = await html(jobPath);
   ok(hiredJob.h.includes('Hired') && hiredJob.h.includes('starts on this job'), 'job page shows the hire');
-  const rated = await html(`/human/job/${jobPath.split('/')[2]}/rate?stars=5`);
-  ok(rated.s === 302, 'human rating is accepted');
-  const ratedJob = await html(jobPath);
-  ok(ratedJob.h.includes('★★★★★'), 'rating shows on the job');
-  const hiredProfile = await html(`/agent/${ownerLink[1]}`);
-  ok(hiredProfile.h.includes('Hired') && hiredProfile.h.includes('★★★★★'), 'rating shows on the agent profile');
+  ok(hiredJob.h.includes('<span class="chip complete">Completed</span>') === false && hiredJob.h.includes('Job completed?'), 'a new hire is Hired but not Completed');
+
+  const hireState = await (await fetch(BASE + '/api/state')).json();
+  ok(hireState.pulses.some((p) => p.kind === 'hire' && p.a === ownerLink[1]), 'a hire pulses the live graph');
+  const hireEvent = hireState.events.find((e) => e.kind === 'hire' && e.agent_key === ownerLink[1]);
+  ok(hireEvent && hireEvent.demo === 1, 'a demo-agent hire is labelled Simulated demo in the feed');
+
+  const jobId = jobPath.split('/')[2];
+  const hiredProfileBefore = await html(`/agent/${ownerLink[1]}`);
+  ok(hiredProfileBefore.h.includes('0 evaluated jobs') && hiredProfileBefore.h.includes('Hired: 1'), 'a hire alone does not count toward Performance');
+
+  const quick = await html(`/human/job/${jobId}/rate?stars=4`);
+  ok(quick.s === 302, 'the existing quick-rating route still answers');
+  const afterQuick = await html(jobPath);
+  ok(!afterQuick.h.includes('<span class="chip complete">Completed</span>'), 'a rating without completion does not mark the job Completed');
+  const quickProfile = await html(`/agent/${ownerLink[1]}`);
+  ok(quickProfile.h.includes('0 evaluated jobs'), 'an uncompleted rating does not count toward Performance');
+
+  const badEval = await post(`/human/job/${jobId}/complete`, form({ completed: '1', stars: '6', comment: 'too high' }));
+  ok(badEval.s === 400 && badEval.h.includes('rating must be a whole number from 0 to 5'), 'completion rejects a rating outside 0 to 5');
+
+  const done = await post(`/human/job/${jobId}/complete`, form({ completed: '1', stars: '5', comment: 'Cleared the queue with no escalation misses.' }));
+  ok(done.s === 302, 'completion and evaluation save');
+  const doneJob = await html(jobPath);
+  ok(doneJob.h.includes('<span class="chip complete">Completed</span>') && doneJob.h.includes('★★★★★') && doneJob.h.includes('Cleared the queue'), 'a Completed job shows its human evaluation');
+  ok(doneJob.h.includes('<span class="chip hired">Hired</span>') && doneJob.h.includes('starts on this job'), 'Hired and Completed are shown as separate states');
+  const doneProfile = await html(`/agent/${ownerLink[1]}`);
+  ok(doneProfile.h.includes('1 evaluated job') && doneProfile.h.includes('5.0'), 'Performance shows the rating and its sample size');
+  ok(doneProfile.h.includes('Simulated demo'), 'a demo agent’s performance is labelled Simulated demo');
+
+  await post(`/human/job/${jobId}/complete`, form({ completed: '0', stars: '5', comment: 'Not finished.' }));
+  const undoneJob = await html(jobPath);
+  ok(undoneJob.h.includes('<span class="chip hired">Hired</span>') && !undoneJob.h.includes('<span class="chip complete">Completed</span>'), 'marking No keeps the hire but drops Completed');
+  const undoneProfile = await html(`/agent/${ownerLink[1]}`);
+  ok(undoneProfile.h.includes('0 evaluated jobs'), 'an incomplete job is excluded from Performance');
+
+  await post(`/human/job/${jobId}/complete`, form({ completed: '1', stars: '0', comment: 'Zero is a valid rating.' }));
+  const zeroJob = await html(jobPath);
+  ok(zeroJob.h.includes('☆☆☆☆☆'), 'rating 0 is accepted and shown');
+  await post(`/human/job/${jobId}/complete`, form({ completed: '1', stars: '5', comment: 'Final evaluation.' }));
+
+  const openJob = state.jobs.find((j) => !j.hired_key && j.id !== Number(jobId));
+  if (openJob) {
+    const noHire = await post(`/human/job/${openJob.id}/complete`, form({ completed: '1', stars: '5' }));
+    ok(noHire.s === 400 && noHire.h.includes('only a job with a hired agent can be completed'), 'an open job cannot be marked Completed');
+  }
 
   // owner badge + demo helpers
   const toggled = await html(`/agent/${key}/owner/open?on=1`);
@@ -225,6 +285,10 @@ ANSWER: B`;
 
   const replay = await (await fetch(BASE + '/api/replay', { method: 'POST' })).json();
   ok(replay.ok && replay.steps > 0, 'replay demo endpoint answers');
+  await sleep(1400);
+  const replayState = await (await fetch(BASE + '/api/state')).json();
+  ok(replayState.events.some((e) => e.demo === 1 && /is on the network|studied/.test(e.text)), 'replay events are labelled Simulated demo');
+  ok(replayState.pulses.length > 0, 'replayed events pulse the graph');
   const pause = await (await fetch(BASE + '/api/pause?on=1', { method: 'POST' })).json();
   const sim = await (await fetch(BASE + '/api/simulate?on=1', { method: 'POST' })).json();
   ok(pause.ok && sim.ok && sim.settings.paused === true, 'simulate and pause switches answer');
