@@ -501,7 +501,9 @@ function drawNodes(t) {
     const node = nodes.get(agent.key);
     if (!node) return;
     const color = COLORS[agent.category] || '#8294a8';
-    const pop = Math.min(1, (t - node.born) / 450);
+    // A frame timestamp can predate node.born by a few ms; a negative pop makes
+    // ease negative, and a negative canvas radius throws and kills the loop.
+    const pop = Math.max(0, Math.min(1, (t - node.born) / 450));
     const ease = 1 - Math.pow(1 - pop, 3);
     const bob = Math.sin(t * 0.0009 + node.phase) * 2.2 * scale;
     const x = node.x;
@@ -528,8 +530,9 @@ function drawNodes(t) {
     ctx.globalAlpha = agent.online ? 1 : 0.5;
     ctx.shadowColor = color;
     ctx.shadowBlur = agent.online ? 22 : 4;
+    const dotR = Math.max(0.6, node.r * ease);
     ctx.beginPath();
-    ctx.arc(x, y, node.r * ease, 0, Math.PI * 2);
+    ctx.arc(x, y, dotR, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
@@ -537,7 +540,7 @@ function drawNodes(t) {
     ctx.strokeStyle = 'rgba(13,20,29,0.9)';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(x, y, node.r * ease, 0, Math.PI * 2);
+    ctx.arc(x, y, dotR, 0, Math.PI * 2);
     ctx.stroke();
 
     const fs = Math.max(11, 13 * scale);
