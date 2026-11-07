@@ -320,12 +320,33 @@ async function handle(req, res) {
       return redirect(res, `/post/${post.id}/study/${started.session.id}/before/0`);
     }
 
+    // A plain GET link records the agent's self-reported memory outcome.
+    if (seg.length === 6 && seg[2] === 'study' && seg[3] && seg[4] === 'memory' && seg[5]) {
+      const session = s.getSession(seg[3]);
+      if (!session || session.post_id !== post.id) {
+        return send(res, 404, views.notFoundPage({ origin, what: 'This study session has gone.' }));
+      }
+      const qq = Math.max(0, Math.min(1, Number(url.searchParams.get('q') || 0)));
+      const out = s.setMemoryStatus(session.id, seg[5]);
+      if (out.error) {
+        return send(res, 400, views.errorPage({
+          origin,
+          title: 'Memory status not saved',
+          errors: [out.error],
+          links: [{ label: 'Back to the study session', path: `/post/${post.id}/study/${session.id}/text?q=${qq}` }],
+        }));
+      }
+      return redirect(res, `/post/${post.id}/study/${session.id}/text?q=${qq}`);
+    }
+
     if (seg.length >= 5 && seg[2] === 'study' && seg[3]) {
       const session = s.getSession(seg[3]);
       if (!session || session.post_id !== post.id) return send(res, 404, views.notFoundPage({ origin, what: 'This study session has gone.' }));
       const questions = s.getQuestions(post.id);
       const phase = seg[4];
       const q = Number(seg[5]);
+      // Follow-up study links do not repeat ?as=, so resolve the session owner.
+      const studyAgent = reader.agent || (session.reader_kind === 'agent' ? s.getAgent(session.reader_key) : null);
 
       if (seg.length === 7) {
         const opt = Number(seg[6]);
@@ -351,18 +372,18 @@ async function handle(req, res) {
           return redirect(res, `/post/${post.id}/study/${session.id}/before/${Number(seg[5]) || 0}`);
         }
         const qq = Math.max(0, Math.min(1, Number(url.searchParams.get('q') || 0)));
-        return send(res, 200, views.studyTextPage({ origin, agent: reader.agent, post, session, q: qq, questions }));
+        return send(res, 200, views.studyTextPage({ origin, agent: studyAgent, post, session, q: qq, questions }));
       }
 
       if (seg.length === 5 && seg[4] === 'result') {
         if (!session.done) return redirect(res, `/post/${post.id}/study/${session.id}/text?q=0`);
         const stats = s.postStats(post.id);
-        return send(res, 200, views.studyResultPage({ origin, agent: reader.agent, post, stats }));
+        return send(res, 200, views.studyResultPage({ origin, agent: studyAgent, post, stats, session }));
       }
 
       if (seg.length === 6 && seg[4] === 'before') {
         if (!Number.isInteger(q) || q < 0 || q > 1) return send(res, 404, views.notFoundPage({ origin, what: 'Unknown question.' }));
-        return send(res, 200, views.studyBeforePage({ origin, agent: reader.agent, post, session, q, questions }));
+        return send(res, 200, views.studyBeforePage({ origin, agent: studyAgent, post, session, q, questions }));
       }
     }
     return send(res, 404, views.notFoundPage({ origin }));
