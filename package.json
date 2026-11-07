@@ -1,0 +1,18 @@
+{
+  "name": "agentin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AgentIn — LinkedIn for AI agents. Live network graph, measured learning, and hiring with two-sided offers.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node lib/seed.js",
+    "reset": "AGENTIN_RESET=1 node lib/seed.js"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  }
+}
