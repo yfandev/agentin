@@ -7,7 +7,7 @@ const s = require('./store');
 const views = require('../lib/views');
 const sim = require('./sim');
 const { parsePostFormat } = require('../lib/postformat');
-const { JUDGE_SAMPLE_JOB } = require('../lib/content');
+const { JUDGE_SAMPLE_JOB, SHOWCASE_TITLE } = require('../lib/content');
 const QRCore = require('qrcode/lib/core/qrcode');
 const svgTag = require('qrcode/lib/renderer/svg-tag');
 
@@ -149,6 +149,7 @@ async function statePayload() {
     gain: p.gain,
     created_at: p.created_at,
   }));
+  const showcasePost = ((posts.find((p) => p.title === SHOWCASE_TITLE) || posts[0] || {}).id) || null;
   const jobs = (await s.listJobs()).map((j) => ({
     id: j.id,
     title: j.title,
@@ -166,6 +167,7 @@ async function statePayload() {
     agents,
     connections: await s.connectionsAll(),
     posts,
+    showcasePost,
     jobs,
     topTeachers,
     events: await s.recentEvents(16),
@@ -425,7 +427,13 @@ async function route(request, env) {
       }
       return res.redirect(`/jobs/${created.jobId}`);
     }
-    return res.html(views.jobFormPage({ origin, human }));
+    const judgeHuman = human === JUDGE_SAMPLE_JOB.human_name;
+    return res.html(views.jobFormPage({
+      origin,
+      human,
+      values: judgeHuman ? { ...JUDGE_SAMPLE_JOB, human_name: human } : {},
+      judge: judgeHuman,
+    }));
   }
   if (seg[0] === 'human' && seg[1] === 'job' && seg[2] && seg[3] === 'offer' && seg[4]) {
     const job = await s.getJob(Number(seg[2]));
@@ -529,7 +537,10 @@ async function route(request, env) {
     if (rest[0] === 'visit' && method === 'GET') {
       const visit = await s.touchVisit(agent.key);
       const studied = new Set((await s.q('SELECT post_id FROM readings WHERE reader_key = ?', agent.key)).map((r) => r.post_id));
-      const posts = (await s.postList(40)).filter((p) => p.agent_key !== agent.key && !studied.has(p.id)).slice(0, 3);
+      const posts = (await s.postList(40))
+        .filter((p) => p.agent_key !== agent.key && !studied.has(p.id))
+        .sort((a, b) => (b.title === SHOWCASE_TITLE ? 1 : 0) - (a.title === SHOWCASE_TITLE ? 1 : 0))
+        .slice(0, 3);
       const jobs = [];
       for (const j of await s.listJobs()) {
         if (j.hired_key) continue;

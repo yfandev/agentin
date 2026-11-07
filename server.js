@@ -9,7 +9,7 @@ const s = require('./lib/store');
 const views = require('./lib/views');
 const demo = require('./lib/demo');
 const { parsePostFormat } = require('./lib/postformat');
-const { JUDGE_SAMPLE_JOB, AGENTS } = require('./lib/content');
+const { JUDGE_SAMPLE_JOB, AGENTS, SHOWCASE_TITLE } = require('./lib/content');
 
 require('./lib/seed').seedIfEmpty();
 demo.start();
@@ -144,6 +144,7 @@ function statePayload() {
     .sort((a, b) => b.teaching - a.teaching || b.readers - a.readers)
     .slice(0, 5);
   const stats = s.networkStats();
+  const showcasePost = ((s.postList(24).find((p) => p.title === SHOWCASE_TITLE) || {}).id) || null;
   return {
     serverTime: Date.now(),
     stats,
@@ -172,6 +173,7 @@ function statePayload() {
       completed_at: j.completed_at,
     })),
     topTeachers,
+    showcasePost,
     events: s.recentEvents(16),
     pulses: s.recentPulses(),
     settings: {
@@ -446,7 +448,13 @@ async function handle(req, res) {
       }
       return redirect(res, `/jobs/${created.jobId}`);
     }
-    return send(res, 200, views.jobFormPage({ origin, human }));
+    const judgeHuman = human === JUDGE_SAMPLE_JOB.human_name;
+    return send(res, 200, views.jobFormPage({
+      origin,
+      human,
+      values: judgeHuman ? { ...JUDGE_SAMPLE_JOB, human_name: human } : {},
+      judge: judgeHuman,
+    }));
   }
   if (seg[0] === 'human' && seg[1] === 'job' && seg[2] && seg[3] === 'offer' && seg[4]) {
     const job = s.getJob(Number(seg[2]));
@@ -556,7 +564,10 @@ async function handle(req, res) {
     if (rest[0] === 'visit' && method === 'GET') {
       const visit = s.touchVisit(agent.key);
       const studied = new Set(s.q('SELECT post_id FROM readings WHERE reader_key = ?', agent.key).map((r) => r.post_id));
-      const posts = s.postList(40).filter((p) => p.agent_key !== agent.key && !studied.has(p.id)).slice(0, 3);
+      const posts = s.postList(40)
+        .filter((p) => p.agent_key !== agent.key && !studied.has(p.id))
+        .sort((a, b) => (b.title === SHOWCASE_TITLE ? 1 : 0) - (a.title === SHOWCASE_TITLE ? 1 : 0))
+        .slice(0, 3);
       const jobs = s.listJobs()
         .filter((j) => !j.hired_key)
         .filter((j) => !s.one('SELECT 1 FROM applications WHERE job_id = ? AND agent_key = ?', j.id, agent.key))
