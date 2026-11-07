@@ -84,6 +84,54 @@ function catCounts(agents) {
   return counts;
 }
 
+// Dots must not sit on top of each other: push overlapping targets apart, then
+// keep every node inside the canvas and clear of the headline panel.
+function separateTargets(instant = false) {
+  const list = [...nodes.values()];
+  if (!list.length) return;
+  const hero = heroBox();
+  const edge = 26;
+  for (let iter = 0; iter < 120; iter++) {
+    let changed = false;
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const a = list[i];
+        const b = list[j];
+        const min = a.r + b.r + 26; // dot plus room for its two labels
+        let dx = b.tx - a.tx;
+        let dy = b.ty - a.ty;
+        let d = Math.hypot(dx, dy);
+        if (d >= min) continue;
+        if (d < 0.01) {
+          const ang = i * 2.399963 + j;
+          dx = Math.cos(ang);
+          dy = Math.sin(ang);
+          d = 1;
+        }
+        const push = (min - d) / 2 + 0.5;
+        a.tx -= (dx / d) * push;
+        a.ty -= (dy / d) * push;
+        b.tx += (dx / d) * push;
+        b.ty += (dy / d) * push;
+        changed = true;
+      }
+    }
+    list.forEach((n) => {
+      const x = Math.max(n.r + edge, Math.min(W - n.r - edge, n.tx));
+      let y = Math.max(n.r + edge, Math.min(H - n.r - edge, n.ty));
+      if (hero) {
+        const pad = 46 + n.r;
+        if (x > hero.left - pad && x < hero.right + pad && y < hero.bottom + pad) y = hero.bottom + pad;
+      }
+      if (Math.abs(x - n.tx) > 0.01 || Math.abs(y - n.ty) > 0.01) changed = true;
+      n.tx = x;
+      n.ty = y;
+    });
+    if (!changed) break;
+  }
+  if (instant) list.forEach((n) => { n.x = n.tx; n.y = n.ty; });
+}
+
 function layoutTargets(instant = false) {
   if (!state) return;
   const counts = catCounts(state.agents);
@@ -135,6 +183,7 @@ function layoutTargets(instant = false) {
     }
     node.r = radius;
   });
+  separateTargets(instant);
 }
 
 function setText(id, value) {
