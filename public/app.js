@@ -85,23 +85,25 @@ function overlayRects() {
   return out;
 }
 
-// Move a target just outside a padded rectangle, preferring an exit that stays
-// on the canvas so the bounds clamp cannot drag it straight back inside.
-function pushOutOf(pt, box, pad) {
-  if (pt.tx <= box.left - pad || pt.tx >= box.right + pad || pt.ty <= box.top - pad || pt.ty >= box.bottom + pad) return false;
-  const edge = 26;
-  const onCanvas = (c) => c.tx >= edge && c.tx <= W - edge && c.ty >= edge && c.ty <= H - edge;
-  const moves = [
-    { tx: box.left - pad, ty: pt.ty, d: pt.tx - (box.left - pad) },
-    { tx: box.right + pad, ty: pt.ty, d: box.right + pad - pt.tx },
-    { tx: pt.tx, ty: box.top - pad, d: pt.ty - (box.top - pad) },
-    { tx: pt.tx, ty: box.bottom + pad, d: box.bottom + pad - pt.ty },
-  ].filter((c) => c.d >= 0);
-  const pick = (moves.filter(onCanvas).length ? moves.filter(onCanvas) : moves).sort((a, b) => a.d - b.d)[0];
-  if (!pick) return false;
-  pt.tx = pick.tx;
-  pt.ty = pick.ty;
-  return true;
+// Nearest point to (x, y) that is clear of every panel: step outward along the
+// radius from the graph centre, so a node is never flung off the canvas.
+function freeSpot(x, y, cx, cy, r, rects) {
+  const blocked = (px, py) => rects.some((b) => px > b.left - 12 - r && px < b.right + 12 + r && py > b.top - 12 - r && py < b.bottom + 12 + r);
+  const inside = (px, py) => px >= r + 26 && px <= W - r - 26 && py >= r + 26 && py <= H - r - 26;
+  if (!blocked(x, y) && inside(x, y)) return { tx: x, ty: y };
+  const dx = x - cx;
+  const dy = y - cy;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  for (let step = 14; step <= 320; step += 10) {
+    for (const dir of [1, -1]) {
+      const nx = x + ux * step * dir;
+      const ny = y + uy * step * dir;
+      if (inside(nx, ny) && !blocked(nx, ny)) return { tx: nx, ty: ny };
+    }
+  }
+  return { tx: Math.max(r + 26, Math.min(W - r - 26, x)), ty: Math.max(r + 26, Math.min(H - r - 26, y)) };
 }
 
 function catCounts(agents) {
@@ -117,7 +119,6 @@ function separateTargets(instant = false) {
   const list = [...nodes.values()];
   if (!list.length) return;
   if (W < 80 || H < 80) return; // canvas not measured yet: keep the natural layout
-  const overlays = overlayRects();
   const edge = 26;
   for (let iter = 0; iter < 200; iter++) {
     let changed = false;
@@ -145,7 +146,6 @@ function separateTargets(instant = false) {
       }
     }
     list.forEach((n) => {
-      overlays.forEach((box) => { if (pushOutOf(n, box, 12 + n.r)) changed = true; });
       const x = Math.max(n.r + edge, Math.min(W - n.r - edge, n.tx));
       const y = Math.max(n.r + edge, Math.min(H - n.r - edge, n.ty));
       if (Math.abs(x - n.tx) > 0.01 || Math.abs(y - n.ty) > 0.01) changed = true;
@@ -154,42 +154,29 @@ function separateTargets(instant = false) {
     });
     if (!changed) break;
   }
-  // Last resort: no dot may stay under a panel.
-  list.forEach((n) => {
-    for (let k = 0; k < 12; k++) {
-      let moved = false;
-      overlays.forEach((box) => { if (pushOutOf(n, box, 12 + n.r)) moved = true; });
-      if (!moved) break;
-    }
-    n.tx = Math.max(n.r + edge, Math.min(W - n.r - edge, n.tx));
-    n.ty = Math.max(n.r + edge, Math.min(H - n.r - edge, n.ty));
-  });
   if (instant) list.forEach((n) => { n.x = n.tx; n.y = n.ty; });
 }
 
 function layoutTargets(instant = false) {
   if (!state) return;
-  const counts = catCounts(state.agents);
-  const index = {};
+  if (W < 80 || H < 80) resize();
+  if (W < 80 || H < 80) return;
+  // One ring for the whole network, ordered by category, sized to fit the area
+  // below the headline panel. Even spacing means dots cannot stack up.
+  const rects = overlayRects();
   const scale = Math.max(0.55, Math.min(1.35, Math.min(W, H) / 720));
-  const R = Math.min(W, H) * 0.3;
-  const centerY = H / 2 + 8;
-  const overlays = overlayRects();
-  state.agents.forEach((agent) => {
-    index[agent.category] = index[agent.category] || 0;
-    const i = index[agent.category]++;
-    const total = counts[agent.category] || 1;
-    const angle = ((ANGLE[agent.category] || 0) * Math.PI) / 180;
-    const cx = W / 2 + Math.cos(angle) * R;
-    const cy = centerY + Math.sin(angle) * R;
-    const spread = total <= 1 ? 0 : Math.min(120 * scale, 30 + total * 16 * scale);
-    const a = (i / total) * Math.PI * 2 - Math.PI / 2;
+  const top = 34 + rects.filter((b) => b.top <= 40).reduce((m, b) => Math.max(m, b.bottom), 0);
+  const cx = W / 2;
+  const cy = (top + H - 34) / 2;
+  const R = Math.max(70, Math.min((W - 88) / 2 - 44, (H - 34 - top) / 2 - 44));
+  const ordered = [...state.agents].sort((a, b) => CATS.indexOf(a.category) - CATS.indexOf(b.category));
+  const n = Math.max(1, ordered.length);
+  ordered.forEach((agent, i) => {
     const radius = (agent.badge === 'attendee agent' ? 17 : 14) * Math.max(0.8, Math.min(1.3, scale));
-    const tx = cx + Math.cos(a) * spread;
-    let ty = cy + Math.sin(a) * spread * 0.85;
-    // Start outside every floating panel: dots under a panel are invisible.
-    const spot = { tx, ty };
-    overlays.forEach((box) => pushOutOf(spot, box, 12 + radius));
+    const a = -Math.PI / 2 + (i / n) * Math.PI * 2;
+    const spot = freeSpot(cx + Math.cos(a) * R, cy + Math.sin(a) * R, cx, cy, radius, rects);
+    const tx = spot.tx;
+    const ty = spot.ty;
 
     let node = nodes.get(agent.key);
     if (!node) {
