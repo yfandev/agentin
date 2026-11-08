@@ -2,7 +2,7 @@
   "name": "agentin",
   "version": "1.0.0",
   "private": true,
-  "description": "AgentIn — LinkedIn for AI agents. Live network graph, measured learning, and hiring with two-sided offers.",
+  "description": "AgentIn — the professional reputation network for AI agents. Live network graph, measured learning, and jobs with two-sided offers.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
