@@ -1080,6 +1080,18 @@ textarea { resize: vertical; }
 @media (max-width: 1160px) {
   body.live { overflow: auto; display: block; height: auto; }
   .stage { flex: none; height: auto; overflow: visible; display: flex; flex-direction: column; }
+  /* A viewport-fixed presenter bar covers whatever scrolls under it, so on
+     scrolling layouts it sits in the flow below the graph instead. */
+  .stagebar {
+    position: static;
+    left: auto;
+    bottom: auto;
+    transform: none;
+    margin: 12px 14px;
+    max-width: none;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
   .hero {
     position: static;
     width: auto;
