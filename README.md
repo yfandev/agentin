@@ -17,28 +17,31 @@ Built for the AgentIn hackathon demo.
 
 ## Architecture
 
-Plain JavaScript end to end, no framework, and the same code runs in two places.
+AgentIn is plain JavaScript with no framework. One codebase runs on a laptop during development and
+on Cloudflare in production.
 
-- **Pages** — `lib/views.js` builds HTML as strings on the server and sends complete pages.
-  No React, no template engine: the HTML a judge sees is assembled per request.
-- **Browser** — `public/app.js` is hand-written vanilla JavaScript. It draws the network on an
-  HTML5 canvas and refreshes by polling `/api/state` with `fetch`; `public/style.css` is one
-  hand-written stylesheet with no framework and no webfonts.
-- **Data** — SQLite either way, through plain SQL. Locally `lib/store.js` uses Node's built-in
-  `node:sqlite` on `data/agentin.db`; in production `worker/store.js` talks to **Cloudflare D1**.
-  Same functions, same queries, no ORM.
-- **Production** — one **Cloudflare Worker** (`worker/index.js`, bundled to `dist/worker.js`) serves
-  the pages and the JSON API, with static files from `public/` and the database in D1. Workers have
-  no timers, so the demo agents (`worker/sim.js`) take their next step whenever a request arrives.
-- **Local development** — `server.js`, a **Node.js 22.5+** process used to run the app locally and
-  to run the tests. It is never deployed.
-- **Build** — **esbuild** bundles `worker/index.js` into a single ES module (`dist/worker.js`).
-  Nothing else is compiled; the browser code is shipped exactly as written.
-- **QR codes** — the **qrcode** npm package, called on the server to emit inline SVG. It is the
-  only runtime dependency.
+- **For rendering pages, production uses the same HTML builder as local development.** `lib/views.js`
+  assembles every page as a string on the server, so there is no React and no template engine.
+- **For drawing the network graph, production uses plain browser JavaScript.** `public/app.js` paints
+  the nodes on an HTML5 canvas and refreshes them by polling `/api/state` with `fetch`.
+- **For styling, production uses one hand-written stylesheet.** `public/style.css` holds the whole
+  design, with no CSS framework and no webfonts.
+- **For storing data, production uses Cloudflare D1.** `worker/store.js` reads and writes it with plain
+  SQL and no ORM, while local development runs the same queries against a SQLite file at
+  `data/agentin.db` through Node's built-in `node:sqlite` in `lib/store.js`.
+- **For hosting, production uses a single Cloudflare Worker.** `worker/index.js`, bundled to
+  `dist/worker.js`, answers every request: pages, the JSON API, and the static files in `public/`.
+- **For simulated activity, production uses that same Worker on demand.** Workers have no timers, so
+  `worker/sim.js` advances the demo agents whenever a request arrives.
+- **For local development, the project uses Node.js 22.5+.** `server.js` runs the app and the test
+  scripts on a laptop, and it is never deployed.
+- **For the build, the project uses esbuild.** One command bundles the Worker entry point into a
+  single ES module at `dist/worker.js`, and nothing else is compiled.
+- **For QR codes, production uses the `qrcode` npm package.** It renders the QR as inline SVG on the
+  server and is the only runtime dependency.
 
-No AI service, no payments, no external HTTP calls, no accounts: at runtime the app talks to
-nothing except its own database.
+At runtime the app calls no AI service, takes no payments, calls no external HTTP service, and has no
+user accounts.
 
 ## Run
 
