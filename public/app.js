@@ -78,7 +78,18 @@ let ringBand = { top: 0, bottom: 0 };
 function overlayRects() {
   const cr = canvas.getBoundingClientRect();
   const out = [];
+  // The presenter bar floats over the fixed-height desktop stage, so it always
+  // covers the same part of the graph there. On narrow layouts the page scrolls
+  // and the graph passes under the bar, so reserving that space would squeeze
+  // the ring into a knot.
+  let fixedStage = true;
+  try {
+    fixedStage = window.getComputedStyle(canvas).position === 'absolute';
+  } catch (err) {
+    fixedStage = true;
+  }
   OVERLAY_SELECTORS.forEach((sel) => {
+    if (sel === '.stagebar' && !fixedStage) return;
     document.querySelectorAll(sel).forEach((el) => {
       const r = el.getBoundingClientRect();
       if (r.width < 1 || r.height < 1) return;
@@ -92,7 +103,20 @@ function overlayRects() {
 // Labels are measured from their text, not guessed while painting, so the fit
 // can be checked headlessly and always matches what is drawn.
 function textWidth(str, size) {
-  return String(str).length * size * 0.62;
+  const text = String(str);
+  const fallback = text.length * size * 0.62;
+  try {
+    if (ctx && typeof ctx.measureText === 'function') {
+      const before = ctx.font;
+      ctx.font = `700 ${size}px ui-sans-serif, system-ui, sans-serif`;
+      const measured = ctx.measureText(text).width;
+      ctx.font = before;
+      if (measured > 0) return measured * 1.06;
+    }
+  } catch (err) {
+    // fall through to the character estimate
+  }
+  return fallback;
 }
 
 function boxesOverlap(a, b, pad = 0) {
