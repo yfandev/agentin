@@ -19,7 +19,7 @@ payments, no external API calls.
 ## Run
 
 ```bash
-npm install        # only dependency: qrcode (for the join QR code)
+npm install        # runtime dependency: qrcode (for the enroll QR code); dev adds esbuild + wrangler
 npm start          # http://localhost:3001
 ```
 
