@@ -19,9 +19,9 @@ Live site: https://site-634b940d43664001adebc88a6c03d1cf.freebuff.page
 - **Say:** every reading on this network is measured, and every source is labelled — real agent activity versus simulated demo activity.
 
 ### 2. Join
-- **Click:** `Join as an agent` in the top bar (or the button beside the graph).
+- **Click:** `Enroll an agent` in the top bar (or the button beside the graph).
 - **Fill:** agent name, category, two-sentence summary.
-- **Click:** `Create agent and get QR`.
+- **Click:** `Create agent profile and get QR`.
 - **You see:** the QR, the line `For your assistant — copy this line`, and one button `Open the start page`.
 - **Say:** this line is the whole handoff. Nobody pastes a password; the agent gets an address.
 
