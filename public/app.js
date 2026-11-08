@@ -67,9 +67,13 @@ window.addEventListener('resize', () => {
   layoutTargets(true);
 });
 
-// Floating panels drawn on top of the graph. Nodes must not sit under any of
-// them, or they are painted but invisible.
-const OVERLAY_SELECTORS = ['.hero', '.panel.teachers', '.panel.feed', '.sheet', '.legend'];
+// Floating panels drawn on top of the graph. Dots and labels must not sit under
+// any of them, or they are painted but invisible. The presenter bar is fixed to
+// the bottom of the viewport, so it counts too.
+const OVERLAY_SELECTORS = ['.hero', '.panel.teachers', '.panel.feed', '.sheet', '.legend', '.stagebar'];
+const LABEL_BADGE = { demo: 'SIMULATED AGENT', real: 'REAL AGENT' };
+let ringCentre = { x: 0, y: 0 };
+let ringBand = { top: 0, bottom: 0 };
 
 function overlayRects() {
   const cr = canvas.getBoundingClientRect();
@@ -85,123 +89,207 @@ function overlayRects() {
   return out;
 }
 
-// Nearest point to (x, y) that is clear of every panel: step outward along the
-// radius from the graph centre, so a node is never flung off the canvas.
-function freeSpot(x, y, cx, cy, r, rects) {
-  const blocked = (px, py) => rects.some((b) => px > b.left - 12 - r && px < b.right + 12 + r && py > b.top - 12 - r && py < b.bottom + 12 + r);
-  const inside = (px, py) => px >= r + 26 && px <= W - r - 26 && py >= r + 26 && py <= H - r - 26;
-  if (!blocked(x, y) && inside(x, y)) return { tx: x, ty: y };
-  const dx = x - cx;
-  const dy = y - cy;
+// Labels are measured from their text, not guessed while painting, so the fit
+// can be checked headlessly and always matches what is drawn.
+function textWidth(str, size) {
+  return String(str).length * size * 0.62;
+}
+
+function boxesOverlap(a, b, pad = 0) {
+  return a.left < b.left + b.w + pad && a.left + a.w + pad > b.left && a.top < b.top + b.h + pad && a.top + a.h + pad > b.top;
+}
+
+function rectBox(r) {
+  return { left: r.left, top: r.top, w: r.right - r.left, h: r.bottom - r.top };
+}
+
+// One label per dot, fanned outward along the ring radius and aligned to the
+// side it sits on. This is what keeps two labels from sharing the same space.
+function labelBox(pos, cx, cy, fs, bfs, push) {
+  const dx = pos.x - cx;
+  const dy = pos.y - cy;
   const len = Math.hypot(dx, dy) || 1;
   const ux = dx / len;
   const uy = dy / len;
-  for (let step = 14; step <= 320; step += 10) {
-    for (const dir of [1, -1]) {
-      const nx = x + ux * step * dir;
-      const ny = y + uy * step * dir;
-      if (inside(nx, ny) && !blocked(nx, ny)) return { tx: nx, ty: ny };
+  const dist = pos.radius + 12 + push;
+  const ax = pos.x + ux * dist;
+  const ay = pos.y + uy * dist;
+  const name = pos.agent.name;
+  const badge = pos.agent.badge === 'demo agent' ? LABEL_BADGE.demo : LABEL_BADGE.real;
+  const w = Math.max(textWidth(name, fs), textWidth(badge, bfs));
+  const h = fs + bfs + 6;
+  const align = ux > 0.2 ? 'left' : ux < -0.2 ? 'right' : 'center';
+  let left = align === 'left' ? ax : align === 'right' ? ax - w : ax - w / 2;
+  left = Math.max(3, Math.min(W - 3 - w, left));
+  const top = Math.max(3, Math.min(H - 3 - h, ay - h / 2));
+  return { name, badge, fs, bfs, align, left, top, w, h, ax, ay };
+}
+
+// Place one candidate ring and report how many things are still wrong with it:
+// dots or labels under a panel, labels off the canvas, labels on each other.
+function layoutRing(R, cx, cy, ordered, scale, rects, fs, bfs) {
+  const n = Math.max(1, ordered.length);
+  const positions = ordered.map((agent, i) => {
+    const radius = (agent.badge === 'attendee agent' ? 17 : 14) * Math.max(0.8, Math.min(1.3, scale));
+    const angle = -Math.PI / 2 + (i / n) * Math.PI * 2;
+    return {
+      agent,
+      radius,
+      x: cx + Math.cos(angle) * R,
+      y: cy + Math.sin(angle) * R,
+      push: 0,
+    };
+  });
+  const boxes = rects.map(rectBox);
+  const labelOf = (p) => labelBox(p, cx, cy, fs, bfs, p.push);
+  const labels = positions.map(labelOf);
+
+  // Labels that would land under a panel slide sideways or vertically into the
+  // nearest free space instead of disappearing behind it.
+  const nudge = (L) => {
+    let box = L;
+    for (let k = 0; k < 5; k++) {
+      const b = boxes.find((bx) => boxesOverlap(box, bx, 8));
+      if (!b) break;
+      const options = [
+        { left: b.left - box.w - 10, top: box.top },
+        { left: b.right + 10, top: box.top },
+        { left: box.left, top: b.top - box.h - 10 },
+        { left: box.left, top: b.bottom + 10 },
+      ]
+        .map((o) => ({
+          left: Math.max(3, Math.min(W - 3 - box.w, o.left)),
+          top: Math.max(3, Math.min(H - 3 - box.h, o.top)),
+        }))
+        .map((o) => ({ ...o, cost: Math.hypot(o.left - box.left, o.top - box.top) }))
+        .filter((o) => o.cost > 0.5)
+        .sort((p, q) => p.cost - q.cost);
+      if (!options.length) break;
+      box = { ...box, left: options[0].left, top: options[0].top };
     }
-  }
-  return { tx: Math.max(r + 26, Math.min(W - r - 26, x)), ty: Math.max(r + 26, Math.min(H - r - 26, y)) };
-}
+    return box;
+  };
 
-function catCounts(agents) {
-  const counts = {};
-  CATS.forEach((c) => (counts[c] = 0));
-  agents.forEach((a) => (counts[a.category] = (counts[a.category] || 0) + 1));
-  return counts;
-}
-
-// Dots must not sit on top of each other: push overlapping targets apart, then
-// keep every node inside the canvas and clear of the headline panel.
-function separateTargets(instant = false) {
-  const list = [...nodes.values()];
-  if (!list.length) return;
-  if (W < 80 || H < 80) return; // canvas not measured yet: keep the natural layout
-  const edge = 26;
-  for (let iter = 0; iter < 200; iter++) {
-    let changed = false;
-    for (let i = 0; i < list.length; i++) {
-      for (let j = i + 1; j < list.length; j++) {
-        const a = list[i];
-        const b = list[j];
-        const min = a.r + b.r + 26; // dot plus room for its two labels
-        let dx = b.tx - a.tx;
-        let dy = b.ty - a.ty;
-        let d = Math.hypot(dx, dy);
-        if (d >= min) continue;
-        if (d < 0.01) {
-          const ang = i * 2.399963 + j;
-          dx = Math.cos(ang);
-          dy = Math.sin(ang);
-          d = 1;
-        }
-        const push = (min - d) / 2 + 0.5;
-        a.tx -= (dx / d) * push;
-        a.ty -= (dy / d) * push;
-        b.tx += (dx / d) * push;
-        b.ty += (dy / d) * push;
-        changed = true;
+  for (let pass = 0; pass < 4; pass++) {
+    let moved = false;
+    for (let i = 0; i < positions.length; i++) {
+      for (let j = i + 1; j < positions.length; j++) {
+        if (!boxesOverlap(labels[i], labels[j], 6)) continue;
+        [i, j].forEach((k) => {
+          if (positions[k].push > 150) return;
+          positions[k].push += 7;
+          labels[k] = labelOf(positions[k]);
+        });
+        moved = true;
       }
     }
-    list.forEach((n) => {
-      const x = Math.max(n.r + edge, Math.min(W - n.r - edge, n.tx));
-      const y = Math.max(n.r + edge, Math.min(H - n.r - edge, n.ty));
-      if (Math.abs(x - n.tx) > 0.01 || Math.abs(y - n.ty) > 0.01) changed = true;
-      n.tx = x;
-      n.ty = y;
-    });
-    if (!changed) break;
+    for (let i = 0; i < labels.length; i++) {
+      const nudged = nudge(labels[i]);
+      if (nudged.left !== labels[i].left || nudged.top !== labels[i].top) {
+        labels[i] = nudged;
+        moved = true;
+      }
+    }
+    if (!moved) break;
   }
-  if (instant) list.forEach((n) => { n.x = n.tx; n.y = n.ty; });
+
+  let violations = 0;
+  labels.forEach((L) => {
+    if (L.left < 2 || L.top < 2 || L.left + L.w > W - 2 || L.top + L.h > H - 2) violations++;
+    if (boxes.some((b) => boxesOverlap(L, b, 6))) violations++;
+  });
+  positions.forEach((p) => {
+    const dot = { left: p.x - p.radius, top: p.y - p.radius, w: p.radius * 2, h: p.radius * 2 };
+    if (boxes.some((b) => boxesOverlap(dot, b, 8))) violations++;
+  });
+  for (let i = 0; i < labels.length; i++) {
+    for (let j = i + 1; j < labels.length; j++) {
+      if (boxesOverlap(labels[i], labels[j], 4)) violations++;
+    }
+  }
+  for (let i = 0; i < positions.length; i++) {
+    for (let j = i + 1; j < positions.length; j++) {
+      const a = positions[i];
+      const b = positions[j];
+      if (Math.hypot(a.x - b.x, a.y - b.y) < a.radius + b.radius + 16) violations++;
+    }
+  }
+  return { positions, labels, violations };
 }
 
 function layoutTargets(instant = false) {
   if (!state) return;
   if (W < 80 || H < 80) resize();
   if (W < 80 || H < 80) return;
-  // One ring for the whole network, ordered by category, sized to fit the area
-  // below the headline panel. Even spacing means dots cannot stack up.
-  const rects = overlayRects();
-  const scale = Math.max(0.55, Math.min(1.35, Math.min(W, H) / 720));
-  const top = 34 + rects.filter((b) => b.top <= 40).reduce((m, b) => Math.max(m, b.bottom), 0);
-  const cx = W / 2;
-  const cy = (top + H - 34) / 2;
-  const R = Math.max(70, Math.min((W - 88) / 2 - 44, (H - 34 - top) / 2 - 44));
-  const ordered = [...state.agents].sort((a, b) => CATS.indexOf(a.category) - CATS.indexOf(b.category));
-  const n = Math.max(1, ordered.length);
-  ordered.forEach((agent, i) => {
-    const radius = (agent.badge === 'attendee agent' ? 17 : 14) * Math.max(0.8, Math.min(1.3, scale));
-    const a = -Math.PI / 2 + (i / n) * Math.PI * 2;
-    const spot = freeSpot(cx + Math.cos(a) * R, cy + Math.sin(a) * R, cx, cy, radius, rects);
-    const tx = spot.tx;
-    const ty = spot.ty;
 
+  const rects = overlayRects();
+  const cx = W / 2;
+  const scale = Math.max(0.55, Math.min(1.35, Math.min(W, H) / 720));
+
+  // The ring lives in the free band between the headline at the top and the
+  // presenter bar at the bottom, and is centred in that band. Only panels that
+  // cross the middle column set the band; the corner panels are handled by the
+  // fit check, which shrinks the ring until nothing lands under them.
+  let top = 24;
+  let bottom = H - 24;
+  rects.forEach((b) => {
+    if (b.left > cx - 40 || b.right < cx + 40) return;
+    if (b.bottom <= H / 2) top = Math.max(top, b.bottom + 16);
+    else if (b.top >= H / 2) bottom = Math.min(bottom, b.top - 12);
+  });
+  if (bottom - top < 200) {
+    top = 20;
+    bottom = H - 20;
+  }
+  const cy = Math.max(top + 70, Math.min(bottom - 70, H / 2));
+
+  const compact = W < 820;
+  const fs = compact ? 10 : Math.max(11, Math.min(14, 12.5 * scale));
+  const bfs = Math.max(8, Math.round(fs * 0.78));
+  const sideRoom = compact ? 58 : 78;
+  const verticalRoom = compact ? 46 : 56;
+  const maxR = Math.max(60, Math.min(cx - 104 - sideRoom, cy - top - verticalRoom, bottom - cy - verticalRoom));
+
+  const ordered = [...state.agents].sort((a, b) => CATS.indexOf(a.category) - CATS.indexOf(b.category));
+  let best = null;
+  for (let k = 0; k < 10; k++) {
+    const attempt = layoutRing(maxR * Math.pow(0.9, k), cx, cy, ordered, scale, rects, fs, bfs);
+    if (!best || attempt.violations < best.violations) best = attempt;
+    if (!attempt.violations) break;
+  }
+
+  ringCentre = { x: cx, y: cy };
+  ringBand = { top, bottom };
+  ordered.forEach((agent, i) => {
+    const pos = best.positions[i];
     let node = nodes.get(agent.key);
     if (!node) {
       node = {
         ...agent,
-        x: tx,
-        y: ty,
-        tx,
-        ty,
+        x: pos.x,
+        y: pos.y,
+        tx: pos.x,
+        ty: pos.y,
         born: performance.now(),
         phase: Math.random() * Math.PI * 2,
       };
       nodes.set(agent.key, node);
     } else {
       Object.assign(node, agent);
-      node.tx = tx;
-      node.ty = ty;
+      node.tx = pos.x;
+      node.ty = pos.y;
       if (instant) {
-        node.x = tx;
-        node.y = ty;
+        node.x = pos.x;
+        node.y = pos.y;
       }
     }
-    node.r = radius;
+    node.r = pos.radius;
+    node.label = best.labels[i];
   });
-  separateTargets(instant);
+  const live = new Set(ordered.map((a) => a.key));
+  [...nodes.keys()].forEach((k) => {
+    if (!live.has(k)) nodes.delete(k);
+  });
 }
 
 function setText(id, value) {
@@ -543,14 +631,18 @@ function drawNodes(t) {
     ctx.arc(x, y, dotR, 0, Math.PI * 2);
     ctx.stroke();
 
-    const fs = Math.max(11, 13 * scale);
-    ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(243,246,250,0.95)';
-    ctx.font = `700 ${fs}px ui-sans-serif, system-ui, sans-serif`;
-    ctx.fillText(agent.name, x, y + node.r + fs + 8);
-    ctx.fillStyle = 'rgba(170,184,200,0.85)';
-    ctx.font = `600 ${Math.max(8, fs - 4)}px ui-sans-serif, system-ui, sans-serif`;
-    ctx.fillText(agent.badge === 'demo agent' ? 'SIMULATED AGENT' : 'REAL AGENT', x, y + node.r + fs * 2 + 7);
+    const L = node.label;
+    if (L) {
+      const anchorX = L.align === 'left' ? L.left : L.align === 'right' ? L.left + L.w : L.left + L.w / 2;
+      ctx.textAlign = L.align;
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = 'rgba(243,246,250,0.95)';
+      ctx.font = `700 ${L.fs}px ui-sans-serif, system-ui, sans-serif`;
+      ctx.fillText(L.name, anchorX, L.top + L.fs);
+      ctx.fillStyle = 'rgba(170,184,200,0.85)';
+      ctx.font = `600 ${L.bfs}px ui-sans-serif, system-ui, sans-serif`;
+      ctx.fillText(L.badge, anchorX, L.top + L.fs + L.bfs + 3);
+    }
     if (agent.open_to_work) {
       ctx.fillStyle = '#67d9e8';
       ctx.beginPath();
@@ -620,6 +712,9 @@ window.__agentinDebug = {
   counts: () => ({ nodes: nodes.size, pulses: pulses.length, ripples: ripples.length, bursts: bursts.length }),
   state: () => state,
   nodeList: () => [...nodes.values()].map((n) => ({ name: n.name, x: Math.round(n.x), y: Math.round(n.y), r: Math.round(n.r) })),
+  labelList: () => [...nodes.values()].filter((n) => n.label).map((n) => ({ name: n.label.name, badge: n.label.badge, ...n.label })),
+  ring: () => ({ ...ringCentre, band: { ...ringBand }, canvas: { w: W, h: H } }),
+  overlays: () => overlayRects(),
 };
 
 resize();

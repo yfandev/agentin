@@ -35,24 +35,29 @@ const agents = stateFile
   : FALLBACK;
 
 const VIEWPORTS = [
-  [1920, 1080],
-  [1600, 900],
-  [1440, 900],
-  [1280, 800],
+  [1920, 1000],
+  [1600, 860],
+  [1440, 722],
+  [1366, 690],
+  [1280, 640],
 ];
 
 const noop = () => {};
 
 function check(w, h) {
   const heroWidth = Math.min(720, w - 700);
-  const hero = { left: (w - heroWidth) / 2, right: (w + heroWidth) / 2, top: 14, bottom: 186 };
-  // Panel rectangles measured from the live layout at 1440x900, scaled to w.
+  // Measured from the live layout: the headline band is 14px from the top and
+  // 154px tall at these desktop widths.
+  const hero = { left: (w - heroWidth) / 2, right: (w + heroWidth) / 2, top: 14, bottom: 154 };
+  // Panel rectangles measured from the live layout, positioned relative to w and h.
+  const barWidth = Math.min(760, w - 24);
   const panels = {
     '.hero': hero,
     '.panel.teachers': { left: 24, right: 334, top: 16, bottom: 153 },
     '.panel.feed': { left: w - 372, right: w - 24, top: 16, bottom: 117 },
-    '.sheet': { left: 24, right: Math.min(560, w * 0.52) + 24, top: 564, bottom: 698 },
-    '.legend': { left: w - 306, right: w - 24, top: 503, bottom: 698 },
+    '.sheet': { left: 24, right: Math.min(560, w * 0.52) + 24, top: h - 158, bottom: h - 24 },
+    '.legend': { left: w - 306, right: w - 24, top: h - 219, bottom: h - 24 },
+    '.stagebar': { left: (w - barWidth) / 2, right: (w + barWidth) / 2, top: h - 62, bottom: h - 16 },
   };
   const ctxStub = new Proxy({}, { get: () => noop, set: () => true });
   const canvasEl = {
@@ -91,7 +96,7 @@ function check(w, h) {
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(
-    code + '\n;globalThis.__probe = { resize, layoutTargets, nodes, setState: (s) => { state = s; } };',
+    code + '\n;globalThis.__probe = { resize, layoutTargets, nodes, setState: (s) => { state = s; }, ring: () => ({ cx: ringCentre.x, cy: ringCentre.y, band: ringBand }), overlays: overlayRects };',
     sandbox,
     { filename: file },
   );
@@ -120,7 +125,31 @@ function check(w, h) {
   const hiddenBy = (n) => Object.entries(panels).filter(([, p]) => p.left < w && p.top < h && n.tx > p.left && n.tx < p.right && n.ty > p.top && n.ty < p.bottom).map(([sel]) => sel);
   const hidden = list.filter((n) => hiddenBy(n).length);
   const hiddenDetail = hidden.map((n) => n.name + ' at ' + Math.round(n.tx) + ',' + Math.round(n.ty) + ' under ' + hiddenBy(n).join('+'));
-  return { w, h, agents: list.length, dots, crowded, insideHero, hidden: hidden.length, hiddenDetail, worst };
+
+  // Labels: the boxes app.js actually paints, checked for collisions with each
+  // other, with the panels, and with the canvas edges.
+  const labels = list.filter((n) => n.label).map((n) => n.label);
+  const hit = (a, b, pad = 0) => a.left < b.left + b.w + pad && a.left + a.w + pad > b.left && a.top < b.top + b.h + pad && a.top + a.h + pad > b.top;
+  let labelOverlaps = 0;
+  for (let i = 0; i < labels.length; i++) {
+    for (let j = i + 1; j < labels.length; j++) if (hit(labels[i], labels[j])) labelOverlaps++;
+  }
+  const panelBoxes = Object.values(panels).map((p) => ({ left: p.left, top: p.top, w: p.right - p.left, h: p.bottom - p.top }));
+  const labelsUnder = labels.filter((L) => panelBoxes.some((b) => hit(L, b))).length;
+  const labelsOff = labels.filter((L) => L.left < 0 || L.top < 0 || L.left + L.w > w || L.top + L.h > h).length;
+  const ring = sandbox.__probe.ring();
+  const centreOffset = Math.abs(ring.cy - h / 2);
+  const panelName = (L) => {
+    const entry = Object.entries(panels).find(([, p]) => hit(L, { left: p.left, top: p.top, w: p.right - p.left, h: p.bottom - p.top }));
+    return entry ? entry[0] : 'none';
+  };
+  const labelsCovered = labels
+    .filter((L) => panelBoxes.some((b) => hit(L, b)))
+    .map((L) => L.name + ' at ' + Math.round(L.left) + ',' + Math.round(L.top) + ' under ' + panelName(L));
+  return {
+    w, h, agents: list.length, dots, crowded, insideHero, hidden: hidden.length, hiddenDetail, worst,
+    labels: labels.length, labelOverlaps, labelsUnder, labelsOff, labelsCovered, centreOffset,
+  };
 }
 
 console.log('graph layout check — ' + file + (stateFile ? ' (state: ' + stateFile + ')' : ' (synthetic network)'));
@@ -129,12 +158,16 @@ for (const [w, h] of VIEWPORTS) {
   const r = check(w, h);
   console.log(
     '  ' + String(r.w + 'x' + r.h).padEnd(10) +
-    'overlaps ' + r.dots +
-    ' · closer than 16px ' + r.crowded +
-    ' · hidden under panels ' + r.hidden +
-    ' · tightest gap ' + (Number.isFinite(r.worst) ? r.worst.toFixed(1) : 'n/a') + 'px',
+    'dot overlaps ' + r.dots +
+    ' · dots under panels ' + r.hidden +
+    ' · label overlaps ' + r.labelOverlaps +
+    ' · labels under panels ' + r.labelsUnder +
+    ' · labels off canvas ' + r.labelsOff +
+    ' · centre offset ' + r.centreOffset.toFixed(0) + 'px' +
+    ' · tightest dot gap ' + (Number.isFinite(r.worst) ? r.worst.toFixed(1) : 'n/a') + 'px',
   );
-  if (process.env.DEBUG && r.hiddenDetail.length) console.log('      ' + r.hiddenDetail.join(' | '));
-  if (r.dots || r.hidden) failed = true;
+  if (process.env.DEBUG && r.hiddenDetail.length) console.log('      dots: ' + r.hiddenDetail.join(' | '));
+  if (process.env.DEBUG && r.labelsCovered.length) console.log('      labels: ' + r.labelsCovered.join(' | '));
+  if (r.dots || r.hidden || r.labelOverlaps || r.labelsUnder || r.labelsOff || r.centreOffset > 12) failed = true;
 }
 process.exitCode = failed ? 1 : 0;
