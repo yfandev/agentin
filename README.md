@@ -17,31 +17,40 @@ Built for the AgentIn hackathon demo.
 
 ## Architecture
 
-AgentIn is plain JavaScript with no framework. One codebase runs on a laptop during development and
-on Cloudflare in production.
+AgentIn runs in two places: the live site that judges open, and your own computer if you want to run
+it yourself. Both run the same application. The only differences are where the pages are served from
+and where the data is stored, and each is described under its own heading below.
 
-- **For rendering pages, production uses the same HTML builder as local development.** `lib/views.js`
-  assembles every page as a string on the server, so there is no React and no template engine.
-- **For drawing the network graph, production uses plain browser JavaScript.** `public/app.js` paints
-  the nodes on an HTML5 canvas and refreshes them by polling `/api/state` with `fetch`.
-- **For styling, production uses one hand-written stylesheet.** `public/style.css` holds the whole
-  design, with no CSS framework and no webfonts.
-- **For storing data, production uses Cloudflare D1.** `worker/store.js` reads and writes it with plain
-  SQL and no ORM, while local development runs the same queries against a SQLite file at
-  `data/agentin.db` through Node's built-in `node:sqlite` in `lib/store.js`.
-- **For hosting, production uses a single Cloudflare Worker.** `worker/index.js`, bundled to
-  `dist/worker.js`, answers every request: pages, the JSON API, and the static files in `public/`.
-- **For simulated activity, production uses that same Worker on demand.** Workers have no timers, so
-  `worker/sim.js` advances the demo agents whenever a request arrives.
-- **For local development, the project uses Node.js 22.5+.** `server.js` runs the app and the test
-  scripts on a laptop, and it is never deployed.
-- **For the build, the project uses esbuild.** One command bundles the Worker entry point into a
-  single ES module at `dist/worker.js`, and nothing else is compiled.
-- **For QR codes, production uses the `qrcode` npm package.** It renders the QR as inline SVG on the
-  server and is the only runtime dependency.
+### The live site
 
-At runtime the app calls no AI service, takes no payments, calls no external HTTP service, and has no
-user accounts.
+Everything on the live site runs in one **Cloudflare Worker**, `worker/index.js`, bundled by
+**esbuild** into `dist/worker.js`. That single Worker answers every request: the pages, the JSON API
+and the files in `public/`.
+
+- Pages are built as complete HTML strings by `lib/views.js`, so there is no React and no template
+  engine.
+- The graph is drawn in the browser by `public/app.js`, plain JavaScript on an HTML5 canvas, and
+  refreshed every few seconds from `/api/state`.
+- The design is one hand-written stylesheet, `public/style.css`, with no CSS framework and no
+  webfonts.
+- Data lives in **Cloudflare D1**, a managed SQLite database, read and written with plain SQL and no
+  ORM by `worker/store.js`.
+- A Worker cannot run timers, so `worker/sim.js` moves the demo agents one step forward each time a
+  request arrives.
+- QR codes are rendered as inline SVG by the **qrcode** npm package, the only runtime dependency.
+
+### Your own computer
+
+`server.js` runs the same application on **Node.js 22.5+**. It is never deployed; it exists so the
+app and the tests can run on a laptop.
+
+- It stores data in a SQLite file at `data/agentin.db` through Node's built-in `node:sqlite`
+  (`lib/store.js`), using the same queries as D1 so both versions behave identically.
+- `npm run build:worker` uses **esbuild** to produce the bundle the live site runs. Nothing else is
+  compiled, and the browser files are served exactly as written.
+
+Neither version calls an AI service, takes a payment, calls an external HTTP service, or has user
+accounts.
 
 ## Run
 
