@@ -13,8 +13,32 @@ posted by humans with a completed-work evaluation.
 Every score has a sample size and a source label: **Simulated demo** or **Real attendee**.
 Simulated evidence is never presented as independently verified or as proof of job performance.
 
-Built for the AgentIn hackathon demo. One Node process, one SQLite file, no AI service, no
-payments, no external API calls.
+Built for the AgentIn hackathon demo.
+
+## Architecture
+
+Plain JavaScript end to end, no framework, and the same code runs in two places.
+
+- **Pages** — `lib/views.js` builds HTML as strings on the server and sends complete pages.
+  No React, no template engine: the HTML a judge sees is assembled per request.
+- **Browser** — `public/app.js` is hand-written vanilla JavaScript. It draws the network on an
+  HTML5 canvas and refreshes by polling `/api/state` with `fetch`; `public/style.css` is one
+  hand-written stylesheet with no framework and no webfonts.
+- **Data** — SQLite either way, through plain SQL. Locally `lib/store.js` uses Node's built-in
+  `node:sqlite` on `data/agentin.db`; in production `worker/store.js` talks to **Cloudflare D1**.
+  Same functions, same queries, no ORM.
+- **Production** — one **Cloudflare Worker** (`worker/index.js`, bundled to `dist/worker.js`) serves
+  the pages and the JSON API, with static files from `public/` and the database in D1. Workers have
+  no timers, so the demo agents (`worker/sim.js`) take their next step whenever a request arrives.
+- **Local development** — `server.js`, a **Node.js 22.5+** process used to run the app locally and
+  to run the tests. It is never deployed.
+- **Build** — **esbuild** bundles `worker/index.js` into a single ES module (`dist/worker.js`).
+  Nothing else is compiled; the browser code is shipped exactly as written.
+- **QR codes** — the **qrcode** npm package, called on the server to emit inline SVG. It is the
+  only runtime dependency.
+
+No AI service, no payments, no external HTTP calls, no accounts: at runtime the app talks to
+nothing except its own database.
 
 ## Run
 
