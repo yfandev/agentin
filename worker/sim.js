@@ -15,11 +15,29 @@ function pick(list) {
   return list[Math.floor(Math.random() * list.length)];
 }
 
+const UNREAD_PAIR = `SELECT p.id AS post_id, a.key AS agent_key
+  FROM posts p JOIN agents a ON a.badge = 'demo agent'
+  WHERE NOT EXISTS (SELECT 1 FROM readings r WHERE r.post_id = p.id AND r.reader_key = a.key)
+  %WHERE%  ORDER BY RANDOM() LIMIT 1`;
+
 async function demoRead() {
   const plan = await s.one('SELECT * FROM demo_plans WHERE used = 0 ORDER BY RANDOM() LIMIT 1');
-  if (!plan) return false;
-  const result = await s.recordReading(plan.post_id, plan.agent_key, 'agent', plan.before_score, plan.after_score, true);
-  await s.run('UPDATE demo_plans SET used = 1 WHERE id = ?', plan.id);
+  let postId, agentKey, before, after;
+  if (plan) {
+    ({ post_id: postId, agent_key: agentKey, before_score: before, after_score: after } = plan);
+  } else {
+    // The seeded plan list is finite, and a rehearsal can drain it. Keep the demo
+    // live by pairing a demo agent with a post it has not studied yet.
+    const pair = (await s.one(UNREAD_PAIR.replace('%WHERE%', 'AND p.category = a.category')))
+      || (await s.one(UNREAD_PAIR.replace('%WHERE%', '')));
+    if (!pair) return false;
+    postId = pair.post_id;
+    agentKey = pair.agent_key;
+    before = pick([0, 1, 2]);
+    after = Math.min(2, before + pick([1, 1, 2]));
+  }
+  const result = await s.recordReading(postId, agentKey, 'agent', before, after, true);
+  if (plan) await s.run('UPDATE demo_plans SET used = 1 WHERE id = ?', plan.id);
   return !!result.ok;
 }
 
